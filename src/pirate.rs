@@ -1,0 +1,200 @@
+use std::fmt;
+use std::sync::Arc;
+use std::time::Duration;
+
+use reqwest::StatusCode;
+use serde_json::Value;
+
+const FORECAST_BASE: &str = "https://api.pirateweather.net/forecast";
+const TIMEMACHINE_BASE: &str = "https://timemachine.pirateweather.net/forecast";
+
+/// Upstream error details stay server-side: request URLs carry the API key,
+/// so error text is never forwarded to clients.
+#[derive(Debug)]
+pub enum UpstreamError {
+    Network { service: &'static str, detail: String },
+    Status { status: StatusCode, service: &'static str, detail: String },
+}
+
+impl UpstreamError {
+    pub fn status(&self) -> Option<StatusCode> {
+        match self {
+            UpstreamError::Network { .. } => None,
+            UpstreamError::Status { status, .. } => Some(*status),
+        }
+    }
+}
+
+impl fmt::Display for UpstreamError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UpstreamError::Network { service, detail } => {
+                write!(f, "{service}: {detail}")
+            }
+            UpstreamError::Status { status, service, detail } => {
+                write!(f, "{service} returned {status}: {detail}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for UpstreamError {}
+
+#[derive(Clone)]
+pub struct PirateClient {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    http: reqwest::Client,
+    key: String,
+    nominatim_base: String,
+}
+
+impl PirateClient {
+    pub fn new(key: String, nominatim_base: String, contact: Option<String>) -> PirateClient {
+        // Nominatim's usage policy requires an identifying user agent.
+        let ua = match contact {
+            Some(c) if !c.trim().is_empty() => {
+                format!("weather-ui/{} ({c})", env!("CARGO_PKG_VERSION"))
+            }
+            _ => format!("weather-ui/{}", env!("CARGO_PKG_VERSION")),
+        };
+        let http = reqwest::Client::builder()
+            .user_agent(ua)
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("reqwest client construction failed");
+        PirateClient {
+            inner: Arc::new(Inner { http, key, nominatim_base }),
+        }
+    }
+
+    fn redact(&self, text: String) -> String {
+        text.replace(&self.inner.key, "***")
+    }
+
+    async fn get_json(&self, service: &'static str, url: &str) -> Result<Value, UpstreamError> {
+        let resp = self.inner.http.get(url).send().await.map_err(|e| UpstreamError::Network {
+            service,
+            detail: self.redact(e.to_string()),
+        })?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let excerpt: String = self.redact(body.chars().take(200).collect());
+            return Err(UpstreamError::Status { status, service, detail: excerpt });
+        }
+        resp.error_for_status_ref().map_err(|e| UpstreamError::Network {
+            service,
+            detail: self.redact(e.to_string()),
+        })?;
+        resp.json::<Value>().await.map_err(|e| UpstreamError::Network {
+            service,
+            detail: self.redact(e.to_string()),
+        })
+    }
+
+    fn coords(lat: f64, lon: f64) -> String {
+        // Pirate Weather resolves to a 13 km model cell; 3 decimals never changes the result.
+        format!("{lat:.3},{lon:.3}")
+    }
+
+    pub async fn forecast(
+        &self,
+        lat: f64,
+        lon: f64,
+        units: &str,
+        lang: &str,
+    ) -> Result<Value, UpstreamError> {
+        let url = format!(
+            "{}/{}/{}?version=2&extend=hourly&icon=pirate&units={}&lang={}",
+            FORECAST_BASE,
+            self.inner.key,
+            Self::coords(lat, lon),
+            units,
+            lang
+        );
+        self.get_json("pirate weather forecast", &url).await
+    }
+
+    pub async fn timemachine(
+        &self,
+        lat: f64,
+        lon: f64,
+        unix_secs: i64,
+        units: &str,
+        lang: &str,
+    ) -> Result<Value, UpstreamError> {
+        let url = format!(
+            "{}/{}/{},{}?version=2&units={}&lang={}",
+            TIMEMACHINE_BASE,
+            self.inner.key,
+            Self::coords(lat, lon),
+            unix_secs,
+            units,
+            lang
+        );
+        self.get_json("pirate weather timemachine", &url).await
+    }
+
+    pub async fn geocode(&self, q: &str, lang: &str) -> Result<Value, UpstreamError> {
+        let base = &self.inner.nominatim_base;
+        let url = format!(
+            "{base}/search?format=jsonv2&limit=6&accept-language={}&q={}",
+            url_component(lang),
+            url_component(q)
+        );
+        self.get_json("nominatim geocoding", &url).await
+    }
+
+    pub async fn reverse(&self, lat: f64, lon: f64, lang: &str) -> Result<Value, UpstreamError> {
+        let base = &self.inner.nominatim_base;
+        let url = format!(
+            "{base}/reverse?format=jsonv2&zoom=14&accept-language={}&lat={lat:.5}&lon={lon:.5}",
+            url_component(lang)
+        );
+        self.get_json("nominatim reverse", &url).await
+    }
+}
+
+/// Minimal percent-encoding sufficient for query values (no reserved chars kept).
+fn url_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push_str("%20"),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_display_never_contains_key() {
+        let client = PirateClient::new("secret-api-key".to_string(), String::new(), None);
+        let raw = "request failed for https://api.pirateweather.net/forecast/secret-api-key/1,2"
+            .to_string();
+        let err = UpstreamError::Network { service: "svc", detail: client.redact(raw) };
+        assert!(!err.to_string().contains("secret-api-key"));
+    }
+
+    #[test]
+    fn url_component_encodes_reserved_chars() {
+        assert_eq!(url_component("Ottawa, Canada"), "Ottawa%2C%20Canada");
+        assert_eq!(url_component("Zurich"), "Zurich");
+    }
+
+    #[test]
+    fn coords_are_fixed_precision() {
+        assert_eq!(PirateClient::coords(47.3769, 8.5417), "47.377,8.542");
+        assert_eq!(PirateClient::coords(-0.0, -122.4194), "-0.000,-122.419");
+    }
+}

@@ -1,0 +1,315 @@
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use axum::body::Body;
+use axum::extract::{Query, State};
+use axum::http::{header::CACHE_CONTROL, HeaderValue, Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::{Json, Router};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use tokio::task::JoinSet;
+use tower_http::compression::CompressionLayer;
+use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
+
+use crate::cache::Cache;
+use crate::merge;
+use crate::pirate::{PirateClient, UpstreamError};
+
+pub const MAX_PAST_DAYS: u32 = 30;
+const FORECAST_TTL: Duration = Duration::from_secs(600);
+const GEOCODE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
+const SECS_PER_DAY: i64 = 86_400;
+const UNITS: [&str; 5] = ["si", "us", "ca", "uk", "uk2"];
+
+#[derive(Clone)]
+pub struct AppState {
+    client: PirateClient,
+    cache: Arc<Cache>,
+}
+
+impl AppState {
+    pub fn new(client: PirateClient, cache: Arc<Cache>) -> AppState {
+        AppState { client, cache }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct WeatherQuery {
+    lat: f64,
+    lon: f64,
+    past_days: Option<u32>,
+    units: Option<String>,
+    lang: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct GeoQuery {
+    q: Option<String>,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    lang: Option<String>,
+}
+
+fn bad_request(msg: &str) -> (StatusCode, Json<Value>) {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
+}
+
+fn upstream_failure(err: &UpstreamError) -> (StatusCode, Json<Value>) {
+    // Deliberately generic: upstream error text may contain request URLs with
+    // the API key. Full details are logged server-side by the caller.
+    let (status, msg) = match err.status() {
+        Some(StatusCode::TOO_MANY_REQUESTS) => (
+            StatusCode::TOO_MANY_REQUESTS,
+            "weather provider rate limit reached; retry shortly",
+        ),
+        Some(StatusCode::FORBIDDEN) => (
+            StatusCode::BAD_GATEWAY,
+            "weather provider rejected the request (check API key and quota)",
+        ),
+        _ => (StatusCode::BAD_GATEWAY, "weather provider unavailable"),
+    };
+    (status, Json(json!({ "error": msg })))
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before 1970")
+        .as_secs() as i64
+}
+
+/// One timemachine timestamp per day: today at the current instant, earlier
+/// days at location-local noon so day boundaries are unambiguous. The offset
+/// from the forecast response is used for past days; across a DST transition
+/// this can be one hour off, which never changes which local day noon lands in.
+pub fn day_timestamps(now_utc: i64, offset_hours: f64, past_days: u32) -> Vec<(u32, i64)> {
+    let offset_secs = (offset_hours * 3600.0).round() as i64;
+    let local = now_utc + offset_secs;
+    let local_midnight = local.div_euclid(SECS_PER_DAY) * SECS_PER_DAY;
+    (0..=past_days)
+        .map(|ago| {
+            let ts = if ago == 0 {
+                now_utc
+            } else {
+                local_midnight + SECS_PER_DAY / 2 - offset_secs - i64::from(ago) * SECS_PER_DAY
+            };
+            (ago, ts)
+        })
+        .collect()
+}
+
+async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -> Response {
+    let past_days = q.past_days.unwrap_or(4).min(MAX_PAST_DAYS);
+    let units = q.units.unwrap_or_else(|| "si".to_string());
+    let lang = q.lang.unwrap_or_else(|| "en".to_string());
+    if !(-90.0..=90.0).contains(&q.lat) {
+        return bad_request("lat must be in [-90, 90]").into_response();
+    }
+    let lon = if q.lon > 180.0 { q.lon - 360.0 } else { q.lon };
+    if !(-180.0..=180.0).contains(&lon) {
+        return bad_request("lon must be in [-180, 180] (or 0..360)").into_response();
+    }
+    if !UNITS.contains(&units.as_str()) {
+        return bad_request("units must be one of si, us, ca, uk, uk2").into_response();
+    }
+    if !lang.chars().all(|c| c.is_ascii_lowercase() || c == '-') || lang.is_empty() || lang.len() > 12
+    {
+        return bad_request("lang must be a short language code").into_response();
+    }
+
+    let coords = format!("{:.3},{:.3}", q.lat, lon);
+    let weather_key = format!("wx:{coords}:{units}:{lang}:{past_days}");
+    if let Some(cached) = state.cache.get(&weather_key) {
+        return ([(CACHE_CONTROL, "no-store")], Json(cached)).into_response();
+    }
+
+    let forecast = match state.client.forecast(q.lat, lon, &units, &lang).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "forecast request failed");
+            return upstream_failure(&e).into_response();
+        }
+    };
+
+    let mut past: Vec<Value> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+    if past_days >= 1 {
+        let offset = forecast.get("offset").and_then(Value::as_f64).unwrap_or(0.0);
+        let mut set = JoinSet::new();
+        for (ago, ts) in day_timestamps(unix_now(), offset, past_days) {
+            let client = state.client.clone();
+            let cache = state.cache.clone();
+            let key = format!("tm:{coords}:{ts}:{units}:{lang}");
+            let lat = q.lat;
+            let units = units.clone();
+            let lang = lang.clone();
+            set.spawn(async move {
+                if let Some(v) = cache.get(&key) {
+                    return Ok((ago, v));
+                }
+                let v = client.timemachine(lat, lon, ts, &units, &lang).await?;
+                // Days before today are settled archive data: cache permanently.
+                let ttl = if ago == 0 { Some(FORECAST_TTL) } else { None };
+                cache.insert(key, v.clone(), ttl);
+                Ok::<(u32, Value), UpstreamError>((ago, v))
+            });
+        }
+        while let Some(joined) = set.join_next().await {
+            match joined {
+                Ok(Ok((_, v))) => past.push(v),
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "timemachine day failed");
+                    warnings.push("one past day failed to load".to_string());
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "timemachine task failed");
+                    warnings.push("one past day failed to load".to_string());
+                }
+            }
+        }
+    }
+
+    let merged = merge::merge(&forecast, &past, warnings);
+    state.cache.insert(weather_key, merged.clone(), Some(FORECAST_TTL));
+    ([(CACHE_CONTROL, "no-store")], Json(merged)).into_response()
+}
+
+async fn health() -> Json<Value> {
+    Json(json!({ "ok": true }))
+}
+
+async fn geocode(State(state): State<AppState>, Query(q): Query<GeoQuery>) -> Response {
+    let Some(qs) = q.q.as_deref() else {
+        return bad_request("q is required").into_response();
+    };
+    let lang = q.lang.unwrap_or_else(|| "en".to_string());
+    if qs.trim().len() < 2 || qs.len() > 100 {
+        return bad_request("q must be 2..100 characters").into_response();
+    }
+    let key = format!("geo:{}:{}", lang, qs.trim().to_lowercase());
+    let body = match state.cache.get(&key) {
+        Some(v) => v,
+        None => match state.client.geocode(qs.trim(), &lang).await {
+            Ok(v) => {
+                let results: Vec<Value> = v
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|r| {
+                                Some(json!({
+                                    "name": r.get("display_name")?,
+                                    "lat": r.get("lat")?.as_str()?.parse::<f64>().ok()?,
+                                    "lon": r.get("lon")?.as_str()?.parse::<f64>().ok()?,
+                                }))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let v = json!(results);
+                state.cache.insert(key, v.clone(), Some(GEOCODE_TTL));
+                v
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "geocode request failed");
+                return upstream_failure(&e).into_response();
+            }
+        },
+    };
+    Json(body).into_response()
+}
+
+async fn reverse(State(state): State<AppState>, Query(q): Query<GeoQuery>) -> Response {
+    let (Some(lat), Some(lon)) = (q.lat, q.lon) else {
+        return bad_request("lat and lon are required").into_response();
+    };
+    let lang = q.lang.unwrap_or_else(|| "en".to_string());
+    let key = format!("rev:{lang}:{lat:.3},{lon:.3}");
+    let body = match state.cache.get(&key) {
+        Some(v) => v,
+        None => match state.client.reverse(lat, lon, &lang).await {
+            Ok(v) => {
+                let name = v
+                    .get("display_name")
+                    .cloned()
+                    .unwrap_or_else(|| json!(format!("{lat:.3}, {lon:.3}")));
+                let v = json!({ "name": name, "lat": lat, "lon": lon });
+                state.cache.insert(key, v.clone(), Some(GEOCODE_TTL));
+                v
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "reverse geocode failed");
+                return upstream_failure(&e).into_response();
+            }
+        },
+    };
+    Json(body).into_response()
+}
+
+/// Hashed Vite assets are immutable; entry HTML and API responses are not.
+async fn cache_headers(req: Request<Body>, next: Next) -> Response {
+    let path = req.uri().path().to_string();
+    let mut resp = next.run(req).await;
+    let value = if path.starts_with("/assets/") {
+        "public, max-age=31536000, immutable"
+    } else if path.starts_with("/api/") {
+        "no-store"
+    } else {
+        "no-cache"
+    };
+    resp.headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(value));
+    resp
+}
+
+pub fn router(state: AppState, static_dir: &std::path::Path) -> Router {
+    let index = static_dir.join("index.html");
+    let api = Router::new()
+        .route("/api/health", get(health))
+        .route("/api/weather", get(weather))
+        .route("/api/geocode", get(geocode))
+        .route("/api/reverse", get(reverse))
+        .with_state(state);
+    Router::new()
+        .merge(api)
+        .fallback_service(ServeDir::new(static_dir).fallback(ServeFile::new(index)))
+        .layer(middleware::from_fn(cache_headers))
+        .layer(CompressionLayer::new())
+        .layer(TraceLayer::new_for_http())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn day_timestamps_cover_past_days_and_today() {
+        // 2024-06-10 15:00 UTC at UTC+2 -> local 17:00.
+        let now = 1_718_031_600;
+        let stamps = day_timestamps(now, 2.0, 2);
+        assert_eq!(stamps.len(), 3);
+        assert_eq!(stamps[0], (0, now));
+        // Ago=1 is June 9 at local noon: 10:00 UTC at UTC+2.
+        assert_eq!(stamps[1].1, 1_717_927_200);
+    }
+
+    #[test]
+    fn error_mapping_hides_upstream_detail() {
+        for (given, want) in [
+            (Some(StatusCode::TOO_MANY_REQUESTS), StatusCode::TOO_MANY_REQUESTS),
+            (Some(StatusCode::FORBIDDEN), StatusCode::BAD_GATEWAY),
+            (Some(StatusCode::INTERNAL_SERVER_ERROR), StatusCode::BAD_GATEWAY),
+            (None, StatusCode::BAD_GATEWAY),
+        ] {
+            let err = match given {
+                Some(s) => UpstreamError::Status { status: s, service: "svc", detail: "x".into() },
+                None => UpstreamError::Network { service: "svc", detail: "x".into() },
+            };
+            let (status, _) = upstream_failure(&err);
+            assert_eq!(status, want);
+        }
+    }
+}
