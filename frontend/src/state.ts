@@ -134,6 +134,19 @@ function storeCached(key: string, payload: WeatherPayload): void {
   writeJson(CACHE_PREFIX + key, { savedAt: Date.now(), payload });
 }
 
+// Paint the last cached view synchronously at startup so a returning visit
+// never shows an empty timeline; the network refresh swaps in when it lands.
+function preloadFromCache(): void {
+  const payload = loadCached(cacheKey(location(), settings()));
+  if (!payload) return;
+  try {
+    setModel(prepare(payload, Math.floor(Date.now() / 1000)));
+    setStale(true);
+  } catch (e) {
+    console.error("cached payload failed to prepare; ignoring it", e);
+  }
+}
+
 export async function refreshWeather(): Promise<void> {
   const loc = location();
   const s = settings();
@@ -165,6 +178,8 @@ export async function refreshWeather(): Promise<void> {
     setErrorMsg(e instanceof Error ? e.message : String(e));
   }
 }
+
+preloadFromCache();
 
 // Refetch inputs: location, range, and language. Zoom/theme/warp changes are
 // local and never hit the network.
