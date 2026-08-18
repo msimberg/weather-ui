@@ -1,12 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 
 import { axisRanges, type Prepared } from "../prepare";
-import {
-  DARK,
-  LIGHT,
-  renderTimeline,
-  type Palette,
-} from "../render";
+import { DARK, LIGHT, renderTimeline, type Palette } from "../render";
 import {
   hoverSec,
   model,
@@ -14,8 +9,11 @@ import {
   resolvedTheme,
   setHoverSec,
   settings,
+  setZen,
+  status,
+  zen,
 } from "../state";
-import { powerAxis, type TimeAxis } from "../transform";
+import { warpAxis, type TimeAxis } from "../transform";
 import { Tooltip } from "./Tooltip";
 
 /** Left label gutter shared between the axis builder and the renderer. */
@@ -38,7 +36,14 @@ export function Timeline() {
     const s = settings();
     const { pastMs, futureMs } = axisRanges(s.pastDays);
     const future = Math.min(futureMs, s.futureDays * 86_400_000);
-    return powerAxis(nowTick() * 1000, pastMs, future, Math.max(50, w - gutter - RIGHT_PAD), s.power);
+    return warpAxis(
+      nowTick() * 1000,
+      pastMs,
+      future,
+      Math.max(50, w - gutter - RIGHT_PAD),
+      { fn: s.warpFn, strength: s.warpStrength },
+      s.nowShare,
+    );
   });
 
   const palette = createMemo<Palette>(() => (resolvedTheme() === "light" ? LIGHT : DARK));
@@ -53,6 +58,8 @@ export function Timeline() {
       units: settings().units,
       palette: palette(),
       hoverSec: hoverSec(),
+      layout: settings().layout,
+      cloudViz: settings().cloudViz,
     });
   });
 
@@ -74,8 +81,7 @@ export function Timeline() {
   }
 
   function onPointerMove(e: PointerEvent) {
-    const t = pointerToSec(e);
-    setHoverSec(t);
+    setHoverSec(pointerToSec(e));
   }
 
   function onPointerLeave() {
@@ -83,20 +89,20 @@ export function Timeline() {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    const current = hoverSec();
-    const base = current ?? nowTick();
-    let next: number | null = null;
-    if (e.key === "ArrowLeft") next = base - (e.shiftKey ? 86_400 : 3600);
-    else if (e.key === "ArrowRight") next = base + (e.shiftKey ? 86_400 : 3600);
-    else if (e.key === "Escape") next = null;
-    if (next !== undefined && e.key !== "Escape") {
-      e.preventDefault();
-      const ax = axis();
-      if (!ax) return;
-      setHoverSec(Math.min(Math.max(next ?? 0, ax.x2t(0) / 1000), nowTick() + ax.futureMs / 1000));
-    } else if (e.key === "Escape") {
+    const ax = axis();
+    if (!ax) return;
+    if (e.key === "Escape") {
       setHoverSec(null);
+      return;
     }
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const base = hoverSec() ?? nowTick();
+    const step = e.shiftKey ? 86_400 : 3600;
+    const next = base + (e.key === "ArrowLeft" ? -step : step);
+    setHoverSec(
+      Math.min(Math.max(next, ax.x2t(0) / 1000), (ax.now + ax.futureMs) / 1000),
+    );
   }
 
   const tooltipAnchor = createMemo(() => {
@@ -113,16 +119,27 @@ export function Timeline() {
   return (
     <div
       ref={wrapRef}
-      class="timeline-wrap"
+      classList={{ "timeline-wrap": true, zen: zen(), compact: settings().layout === "compact" }}
       tabIndex={0}
       role="application"
-      aria-label="Weather timeline. Arrow keys move the crosshair."
+      aria-label="Weather timeline. Arrow keys move the crosshair. F toggles zen mode."
       onPointerMove={onPointerMove}
       onPointerDown={onPointerMove}
       onPointerLeave={onPointerLeave}
       onKeyDown={onKeyDown}
     >
       <canvas ref={canvasRef} />
+      <button
+        type="button"
+        class="focus-btn"
+        onClick={() => setZen(!zen())}
+        title="Toggle focus mode (f)"
+      >
+        {zen() ? "exit focus" : "focus"}
+      </button>
+      <Show when={status() === "loading"}>
+        <div class="loadbar" aria-hidden="true" />
+      </Show>
       <Show when={hoverSec() !== null && model() !== null && tooltipAnchor()}>
         {(anchor) => (
           <Show when={model()} keyed>

@@ -29,7 +29,7 @@ export function Tooltip(props: {
   style: { x: number; y: number };
 }) {
   const sample = () => sampleAt(props.model, props.tSec);
-  const rows = () => buildRows(sample(), props.model.timezone, settings().units);
+  const rows = () => buildRows(sample(), props.model, settings().units);
 
   return (
     <div class="tooltip" style={{ left: `${props.style.x}px`, top: `${props.style.y}px` }}>
@@ -74,6 +74,18 @@ export function Tooltip(props: {
   );
 }
 
+function layerSummary(model: Prepared, tSec: number | undefined): string | undefined {
+  const layers = model.cloudLayers;
+  if (!layers || tSec === undefined) return undefined;
+  let best = -1;
+  for (let i = 0; i < layers.time.length; i++) {
+    if (best < 0 || Math.abs(layers.time[i] - tSec) < Math.abs(layers.time[best] - tSec)) best = i;
+  }
+  if (best < 0) return undefined;
+  const fmt = (a: number[] | undefined) => (a && a[best] !== undefined ? String(Math.round(a[best])) : "-");
+  return `${fmt(layers.low)} / ${fmt(layers.mid)} / ${fmt(layers.high)} %`;
+}
+
 function kindLabel(s: Sample): string {
   switch (s.kind) {
     case "minute":
@@ -85,7 +97,8 @@ function kindLabel(s: Sample): string {
   }
 }
 
-function buildRows(s: Sample | null, tz: string, u: ReturnType<typeof settings>["units"]): Row[] {
+function buildRows(s: Sample | null, model: Prepared, u: ReturnType<typeof settings>["units"]): Row[] {
+  const tz = model.timezone;
   if (!s) return [];
   const rows: Row[] = [];
   const push = (label: string, value: string | number | undefined) => {
@@ -126,6 +139,7 @@ function buildRows(s: Sample | null, tz: string, u: ReturnType<typeof settings>[
     );
     push("pressure", p.pressure !== undefined ? `${p.pressure.toFixed(1)} hPa` : undefined);
     push("cloud", formatPercent(p.cloudCover));
+    push("cloud low/mid/high", layerSummary(model, s.hour?.time));
     push("uv", p.uvIndex !== undefined ? p.uvIndex.toFixed(1) : undefined);
     push(
       "visibility",

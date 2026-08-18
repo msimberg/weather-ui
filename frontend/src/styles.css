@@ -338,3 +338,111 @@ footer .warn {
     font-size: 28px;
   }
 }
+
+/* focus mode: chrome disappears, timeline takes the viewport */
+#root.focus header,
+#root.focus .current,
+#root.focus .alerts,
+#root.focus footer {
+  display: none;
+}
+#root.focus .timeline-wrap {
+  min-height: 100vh;
+}
+
+.focus-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 46px;
+  z-index: 25;
+  opacity: 0.35;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--sub);
+  font-size: 11px;
+  cursor: pointer;
+}
+.focus-btn:hover {
+  opacity: 0.95;
+}
+
+/* indeterminate fetch indicator */
+.loadbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  overflow: hidden;
+  z-index: 22;
+}
+.loadbar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -30%;
+  width: 30%;
+  background: var(--fg);
+  opacity: 0.55;
+  animation: sweep 1s linear infinite;
+}
+@keyframes sweep {
+  to {
+    left: 100%;
+  }
+}
+
+.timeline-wrap.compact {
+  min-height: 300px;
+}
+
+.model-blend {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+.model-grid label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 11px;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+/* chips stay right of the summary on wide screens, compact scroll if needed */
+.chips {
+  justify-content: flex-end;
+}
+@media (min-width: 1100px) {
+  .current {
+    flex-wrap: nowrap;
+  }
+  .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .current .summary {
+    flex-shrink: 1;
+    min-width: 12ch;
+  }
+}
+
+/* mono accents for numeric furniture */
+.chip b,
+footer,
+.status-chip {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}

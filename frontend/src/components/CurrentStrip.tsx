@@ -1,6 +1,7 @@
 import { createEffect, For, Show } from "solid-js";
 
-import { drawIcon } from "../icons";
+import { drawIcon, type IconStyle } from "../icons";
+import { DARK, LIGHT, iconStyle } from "../render";
 import {
   compass,
   formatPercent,
@@ -8,8 +9,11 @@ import {
   visibilityUnit,
   windUnit,
 } from "../format";
-import { model, nowTick, settings } from "../state";
+import { model, nowTick, resolvedTheme, settings } from "../state";
 import type { HourPoint, Units } from "../types";
+
+const currentIconStyle = (): IconStyle =>
+  resolvedTheme() === "light" ? iconStyle(LIGHT) : iconStyle(DARK);
 
 export function IconCanvas(props: { name: string | undefined; size: number }) {
   let ref!: HTMLCanvasElement;
@@ -22,7 +26,7 @@ export function IconCanvas(props: { name: string | undefined; size: number }) {
     ref.style.width = `${props.size}px`;
     ref.style.height = `${props.size}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawIcon(ctx, props.name, 0, 0, props.size);
+    drawIcon(ctx, props.name, 0, 0, props.size, currentIconStyle());
   });
   return <canvas ref={ref} aria-hidden="true" />;
 }
