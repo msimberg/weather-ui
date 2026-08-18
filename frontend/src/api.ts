@@ -20,6 +20,8 @@ export function fetchWeather(
   pastDays: number,
   units: Units,
   lang: string,
+  excludeModels: string[],
+  aiModels: boolean,
   signal?: AbortSignal,
 ): Promise<WeatherPayload> {
   const params = new URLSearchParams({
@@ -28,7 +30,9 @@ export function fetchWeather(
     past_days: String(pastDays),
     units,
     lang,
+    aimodels: String(aiModels),
   });
+  if (excludeModels.length > 0) params.set("exclude", excludeModels.join(","));
   return fetchJson<WeatherPayload>(`/api/weather?${params}`, signal);
 }
 

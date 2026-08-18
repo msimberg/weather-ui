@@ -2,6 +2,7 @@ import { createEffect, createSignal } from "solid-js";
 
 import { fetchWeather } from "./api";
 import { prepare, type Prepared } from "./prepare";
+import { DEFAULT_NOW_SHARE, DEFAULT_WARP, clamp01, type WarpFn } from "./transform";
 import type { CurrentLocation, Units, WeatherPayload } from "./types";
 
 export interface Settings {
@@ -11,8 +12,20 @@ export interface Settings {
   pastDays: number;
   /** Display clamp on the future limb; the API always returns 7 days. */
   futureDays: number;
-  /** Warp exponent: 1 is linear, smaller expands the near term more. */
-  power: number;
+  /** Warp curve family for the fisheye axis. */
+  warpFn: WarpFn;
+  /** 0 = linear in every family, 1 = strongest near-now magnification. */
+  warpStrength: number;
+  /** Fraction of the axis width left of the "now" anchor. */
+  nowShare: number;
+  /** Cloud band style: density columns vs area + UV line. */
+  cloudViz: "density" | "area";
+  /** full = bands fill the viewport height; compact = shorter, centered. */
+  layout: "full" | "compact";
+  /** Pirate Weather model families removed from the blend. */
+  excludeModels: string[];
+  /** Pirate Weather include=aimodels (AIGFS/AIGEFS/ECMWF-AIFS join the blend). */
+  aiModels: boolean;
   lang: string;
 }
 
@@ -21,7 +34,13 @@ const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
   pastDays: 4,
   futureDays: 7,
-  power: 0.4,
+  warpFn: DEFAULT_WARP.fn,
+  warpStrength: DEFAULT_WARP.strength,
+  nowShare: DEFAULT_NOW_SHARE,
+  cloudViz: "density",
+  layout: "full",
+  excludeModels: [],
+  aiModels: false,
   lang: "en",
 };
 
@@ -50,10 +69,20 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
-export const [settings, setSettingsRaw] = createSignal<Settings>({
-  ...DEFAULT_SETTINGS,
-  ...(readJson<Partial<Settings>>("wu.settings") ?? {}),
-});
+/** Pre-warp-family settings used {power: 0.15..1}; map it onto strength. */
+function migrateSettings(stored: Partial<Settings> & { power?: number }): Settings {
+  const { power, ...rest } = stored;
+  const out: Settings = { ...DEFAULT_SETTINGS, ...rest };
+  if (typeof power === "number" && stored.warpStrength === undefined) {
+    out.warpFn = "power";
+    out.warpStrength = clamp01((1 - power) / 0.85);
+  }
+  return out;
+}
+
+export const [settings, setSettingsRaw] = createSignal<Settings>(
+  migrateSettings(readJson("wu.settings") ?? {}),
+);
 export const [location, setLocationRaw] = createSignal<CurrentLocation>(
   readJson<CurrentLocation>("wu.location") ?? DEFAULT_LOCATION,
 );
@@ -68,6 +97,8 @@ export const [stale, setStale] = createSignal(false);
 export const [hoverSec, setHoverSec] = createSignal<number | null>(null);
 /** Ticks every 30s so "now" and the axis drift with wall time. */
 export const [nowTick, setNowTick] = createSignal(Math.floor(Date.now() / 1000));
+/** Zen mode: hides header/strip/footer so only the timeline remains. */
+export const [zen, setZen] = createSignal(false);
 
 export function setSettings(patch: Partial<Settings>): void {
   setSettingsRaw((s) => ({ ...s, ...patch }));
@@ -80,30 +111,21 @@ export function setLocation(loc: CurrentLocation): void {
 createEffect(() => writeJson("wu.settings", settings()));
 createEffect(() => writeJson("wu.location", location()));
 
-createEffect(() => {
-  const theme = settings().theme;
-  const apply = () => {
-    const resolved =
-      theme === "auto"
-        ? matchMedia("(prefers-color-scheme: light)").matches
-          ? "light"
-          : "dark"
-        : theme;
-    document.documentElement.dataset.theme = resolved;
-  };
-  apply();
-  if (theme === "auto") {
-    const mq = matchMedia("(prefers-color-scheme: light)");
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }
-});
+// The media query is lifted into a signal so canvas palettes (which are
+// computed reactively) also repaint when the OS theme flips in auto mode.
+const mediaLightQuery = matchMedia("(prefers-color-scheme: light)");
+const [mediaLight, setMediaLight] = createSignal(mediaLightQuery.matches);
+mediaLightQuery.addEventListener("change", (e) => setMediaLight(e.matches));
 
 export function resolvedTheme(): "light" | "dark" {
   const t = settings().theme;
   if (t !== "auto") return t;
-  return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return mediaLight() ? "light" : "dark";
 }
+
+createEffect(() => {
+  document.documentElement.dataset.theme = resolvedTheme();
+});
 
 let fetchSeq = 0;
 let aborter: AbortController | null = null;
@@ -112,7 +134,8 @@ let lastFetchMs = 0;
 const CACHE_PREFIX = "wu.cache.";
 
 function cacheKey(loc: CurrentLocation, s: Settings): string {
-  return `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}:${s.pastDays}:${s.units}:${s.lang}`;
+  const models = `${s.excludeModels.slice().sort().join("-")}+${s.aiModels ? 1 : 0}`;
+  return `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}:${s.pastDays}:${s.units}:${s.lang}:${models}`;
 }
 
 function loadCached(key: string): WeatherPayload | null {
@@ -163,7 +186,15 @@ export async function refreshWeather(): Promise<void> {
   aborter = ac;
   const seq = ++fetchSeq;
   try {
-    const payload = await fetchWeather(loc, s.pastDays, s.units, s.lang, ac.signal);
+    const payload = await fetchWeather(
+      loc,
+      s.pastDays,
+      s.units,
+      s.lang,
+      s.excludeModels,
+      s.aiModels,
+      ac.signal,
+    );
     if (seq !== fetchSeq) return; // superseded by a newer request
     storeCached(key, payload);
     lastFetchMs = Date.now();
@@ -179,15 +210,12 @@ export async function refreshWeather(): Promise<void> {
   }
 }
 
-preloadFromCache();
-
-// Refetch inputs: location, range, and language. Zoom/theme/warp changes are
-// local and never hit the network.
+// Refetch inputs: location, range, language, and the model blend. Zoom,
+// theme, warp, and layout changes are local and never hit the network.
 createEffect(() => {
   const s = settings();
   const loc = location();
-  const key = cacheKey(loc, s);
-  void key;
+  void cacheKey(loc, s);
   const timer = setTimeout(() => void refreshWeather(), 250);
   return () => clearTimeout(timer);
 });
@@ -199,3 +227,5 @@ setInterval(() => {
   if (document.hidden) return;
   if (model() && Date.now() - lastFetchMs > 9.5 * 60_000) void refreshWeather();
 }, 60_000);
+
+preloadFromCache();

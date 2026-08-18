@@ -108,6 +108,13 @@ export interface WeatherPayload {
     version?: string;
     sourceTimes?: Record<string, string>;
   };
+  /** Open-Meteo altitude-layered cloud cover, 0..100 percent values. */
+  cloudLayers?: {
+    time: number[];
+    low: number[];
+    mid: number[];
+    high: number[];
+  };
   meta?: {
     mergedPastDays?: number;
     warnings?: string[];

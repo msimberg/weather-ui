@@ -5,6 +5,13 @@ import { formatDayLabel, localMidnight } from "./time";
 // night shading intervals, and per-day groupings. It runs once per fetch, so
 // the render loop only does geometry.
 
+export interface CloudLayers {
+  time: number[];
+  low: number[];
+  mid: number[];
+  high: number[];
+}
+
 export interface NightSpan {
   startSec: number;
   endSec: number;
@@ -32,6 +39,7 @@ export interface Prepared {
   hours: HourPoint[];
   minutes: MinutePoint[];
   days: DayPoint[];
+  cloudLayers?: CloudLayers;
   dayGroups: DayGroup[];
   nights: NightSpan[];
   domains: Domains;
@@ -123,6 +131,7 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     hours,
     minutes,
     days,
+    cloudLayers: parseCloudLayers(payload.cloudLayers),
     dayGroups,
     nights,
     domains: {
@@ -142,6 +151,17 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     sources: payload.flags?.sources ?? [],
     apiVersion: payload.flags?.version,
     fetchedAtSec: nowSec,
+  };
+}
+
+function parseCloudLayers(raw: WeatherPayload["cloudLayers"]): CloudLayers | undefined {
+  if (!raw || !Array.isArray(raw.time)) return undefined;
+  if (raw.time.length === 0) return undefined;
+  return {
+    time: raw.time.map(Number),
+    low: (raw.low ?? []).map(Number),
+    mid: (raw.mid ?? []).map(Number),
+    high: (raw.high ?? []).map(Number),
   };
 }
 
