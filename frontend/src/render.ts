@@ -108,6 +108,23 @@ function quantizeWeight(w: number): number {
   return Math.round(w * 8) / 8;
 }
 
+/** Trace pts[i0..i1) as a smooth open curve: data points become control
+ * points of quadratic segments anchored at segment midpoints, so the line
+ * bends gently through the valleys instead of kinking at every sample. */
+function traceSmooth(ctx: Ctx, pts: readonly { x: number; y: number }[], i0: number, i1: number) {
+  ctx.moveTo(pts[i0].x, pts[i0].y);
+  if (i1 - i0 < 3) {
+    for (let i = i0 + 1; i < i1; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    return;
+  }
+  for (let i = i0 + 1; i < i1 - 1; i++) {
+    const midX = (pts[i].x + pts[i + 1].x) / 2;
+    const midY = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+  }
+  ctx.lineTo(pts[i1 - 1].x, pts[i1 - 1].y);
+}
+
 /** Stroke a polyline whose per-vertex weight w controls alpha. Vertices are
  * grouped into weight buckets so each stroke call carries one alpha value. */
 function strokeWeighted(ctx: Ctx, pts: Pt[], style: string, width: number, dash?: number[]) {
@@ -126,12 +143,9 @@ function strokeWeighted(ctx: Ctx, pts: Pt[], style: string, width: number, dash?
     }
     ctx.globalAlpha = bucket;
     ctx.beginPath();
-    ctx.moveTo(pts[i].x, pts[i].y);
     let j = i + 1;
-    while (j < n && quantizeWeight(pts[j].w) === bucket) {
-      ctx.lineTo(pts[j].x, pts[j].y);
-      j++;
-    }
+    while (j < n && quantizeWeight(pts[j].w) === bucket) j++;
+    traceSmooth(ctx, pts, i, j);
     ctx.stroke();
     i = j;
   }
@@ -554,7 +568,7 @@ function drawCloud(
   const y = (v: number): number => band.y1 - BAND_PAD - clamp01(v) * depth;
   const yUv = (v: number): number => band.y1 - BAND_PAD - clamp01(v / 11) * depth;
 
-  // Cloud cover as a filled area, weighted in one stroke bucket family.
+  // Cloud cover as a filled area with a smoothed top edge.
   ctx.lineWidth = 0;
   let run: { x: number; y: number }[] = [];
   const flush = () => {
@@ -564,7 +578,8 @@ function drawCloud(
     }
     ctx.beginPath();
     ctx.moveTo(run[0].x, band.y1 - BAND_PAD);
-    for (const p of run) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(run[0].x, run[0].y);
+    traceSmooth(ctx, run, 0, run.length);
     ctx.lineTo(run[run.length - 1].x, band.y1 - BAND_PAD);
     ctx.closePath();
     ctx.fill();
