@@ -25,6 +25,12 @@ const GEOCODE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 const SECS_PER_DAY: i64 = 86_400;
 const UNITS: [&str; 5] = ["si", "us", "ca", "uk", "uk2"];
 
+/// Model family names accepted by Pirate Weather's exclude parameter.
+const MODELS: [&str; 12] = [
+    "hrrr", "nbm", "gefs", "gfs", "rtma_ru", "ecmwf_ifs", "dwd_mosmix",
+    "ecmwf_aifs", "aigefs", "aigfs", "raqdps", "silam",
+];
+
 #[derive(Clone)]
 pub struct AppState {
     client: PirateClient,
@@ -44,6 +50,8 @@ pub struct WeatherQuery {
     past_days: Option<u32>,
     units: Option<String>,
     lang: Option<String>,
+    exclude: Option<String>,
+    aimodels: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -121,13 +129,34 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         return bad_request("lang must be a short language code").into_response();
     }
 
+    let exclude = q.exclude.unwrap_or_default();
+    for m in exclude.split(',').filter(|m| !m.is_empty()) {
+        if !MODELS.contains(&m) {
+            return bad_request(&format!(
+                "exclude entries must be one of: {}",
+                MODELS.join(", ")
+            ))
+            .into_response();
+        }
+    }
+    let aimodels = q.aimodels.unwrap_or(false);
+    let model_variant = format!("{exclude}+{aimodels}");
+
     let coords = format!("{:.3},{:.3}", q.lat, lon);
-    let weather_key = format!("wx:{coords}:{units}:{lang}:{past_days}");
+    let weather_key = format!("wx:{coords}:{units}:{lang}:{past_days}:{model_variant}");
     if let Some(cached) = state.cache.get(&weather_key) {
         return ([(CACHE_CONTROL, "no-store")], Json(cached)).into_response();
     }
 
-    let forecast = match state.client.forecast(q.lat, lon, &units, &lang).await {
+    // Forecast (fatal) and cloud layers (non-fatal) run concurrently.
+    let fc_client = state.client.clone();
+    let om_client = state.client.clone();
+    let (fc_units, fc_lang) = (units.clone(), lang.clone());
+    let fc_future = fc_client.forecast(q.lat, lon, &fc_units, &fc_lang, &exclude, aimodels);
+    let om_future = om_client.cloud_layers(q.lat, lon, past_days);
+    let (forecast_result, om_result) = tokio::join!(fc_future, om_future);
+
+    let forecast = match forecast_result {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(error = %e, "forecast request failed");
@@ -135,8 +164,17 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         }
     };
 
-    let mut past: Vec<Value> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
+    let cloud_layers: Option<Value> = match om_result {
+        Ok(v) => normalize_cloud_layers(&v),
+        Err(e) => {
+            tracing::warn!(error = %e, "open-meteo cloud layers failed");
+            warnings.push("cloud layer data unavailable".to_string());
+            None
+        }
+    };
+
+    let mut past: Vec<Value> = Vec::new();
     if past_days >= 1 {
         let offset = forecast.get("offset").and_then(Value::as_f64).unwrap_or(0.0);
         let mut set = JoinSet::new();
@@ -173,7 +211,11 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         }
     }
 
-    let merged = merge::merge(&forecast, &past, warnings);
+    let mut merged = merge::merge(&forecast, &past, warnings);
+    if let Some(cl) = cloud_layers {
+        let root = merged.as_object_mut().expect("merged response is an object");
+        root.insert("cloudLayers".to_string(), cl);
+    }
     state.cache.insert(weather_key, merged.clone(), Some(FORECAST_TTL));
     ([(CACHE_CONTROL, "no-store")], Json(merged)).into_response()
 }
@@ -279,6 +321,17 @@ pub fn router(state: AppState, static_dir: &std::path::Path) -> Router {
         .layer(middleware::from_fn(cache_headers))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
+}
+
+/// Reshape the Open-Meteo hourly block into compact parallel arrays. This is
+/// our own API surface, not an upstream passthrough, so it uses short names.
+fn normalize_cloud_layers(v: &Value) -> Option<Value> {
+    let h = v.get("hourly")?;
+    let time = h.get("time")?.clone();
+    let low = h.get("cloudcover_low")?.clone();
+    let mid = h.get("cloudcover_mid")?.clone();
+    let high = h.get("cloudcover_high")?.clone();
+    Some(json!({ "time": time, "low": low, "mid": mid, "high": high }))
 }
 
 #[cfg(test)]

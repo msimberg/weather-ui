@@ -106,8 +106,10 @@ impl PirateClient {
         lon: f64,
         units: &str,
         lang: &str,
+        exclude: &str,
+        aimodels: bool,
     ) -> Result<Value, UpstreamError> {
-        let url = format!(
+        let mut url = format!(
             "{}/{}/{}?version=2&extend=hourly&icon=pirate&units={}&lang={}",
             FORECAST_BASE,
             self.inner.key,
@@ -115,7 +117,31 @@ impl PirateClient {
             units,
             lang
         );
+        if !exclude.is_empty() {
+            url.push_str("&exclude=");
+            url.push_str(exclude);
+        }
+        if aimodels {
+            url.push_str("&include=aimodels");
+        }
         self.get_json("pirate weather forecast", &url).await
+    }
+
+    /// Cloud cover by altitude layer from Open-Meteo (free, no key). Kept out
+    /// of the merge hot path: failures degrade to a missing block plus a
+    /// warning instead of failing the whole weather response.
+    pub async fn cloud_layers(
+        &self,
+        lat: f64,
+        lon: f64,
+        past_days: u32,
+    ) -> Result<Value, UpstreamError> {
+        let url = format!(
+            "https://api.open-meteo.com/v1/forecast?latitude={lat:.3}&longitude={lon:.3}\
+             &hourly=cloudcover_low,cloudcover_mid,cloudcover_high\
+             &timeformat=unixtime&timezone=UTC&past_days={past_days}&forecast_days=8"
+        );
+        self.get_json("open-meteo", &url).await
     }
 
     pub async fn timemachine(
