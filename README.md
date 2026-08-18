@@ -8,38 +8,50 @@ past days fading into lower detail on the left, forecast days compressing
 into daily summary bands on the right.
 
 Data comes from [Pirate Weather](https://pirateweather.net) (Dark Sky
-compatible), location search from OpenStreetMap Nominatim.
-
+compatible), location search from OpenStreetMap Nominatim, and
+altitude-layered cloud cover from Open-Meteo (no key required).
 ## What the timeline shows
 
-Four vertically stacked bands share the warped axis, top to bottom:
+1. **Precipitation**: hourly intensity bars tiled as a histogram
+   (sqrt-scaled, colored by type), the API's intensity error as a soft
+   halo where reported, a probability line, per-minute nowcast bars
+   where pixels allow, and per-day accumulation totals.
+2. **Temperature**: smoothed hourly temperature and apparent temperature
+   lines. Where the axis compresses below reading density, lines
+   crossfade into a smooth envelope through the daily min/max extremes
+   with H/L labels. All handoffs are driven by pixel density, not fixed
+   cutoffs.
+3. **Wind**: speed and gust lines with WMO wind barbs (shaft points
+   where the wind comes from; feathers mark 5/10/50 knot classes).
+4. **Cloud / UV**: default is density shading (column darkness = total
+   cover) plus low/mid/high layer hairlines from Open-Meteo and a UV
+   line; a settings toggle restores the area rendering.
 
-1. **Precipitation**: hourly intensity bars (sqrt-scaled, colored by
-   type: rain/snow/ice), a probability curve, and per-minute nowcast bars
-   in the next-hour window where pixels allow.
-2. **Temperature**: hourly temperature and apparent temperature lines.
-   Where the axis compresses below reading density, the lines crossfade
-   into a daily min/max band with H/L labels (fully visual, driven by
-   pixel density, not by fixed cutoffs).
-3. **Wind**: speed and gust lines with direction arrows (bearings point
-   the direction the wind blows toward).
-4. **Cloud / UV**: cloud cover area and UV index line.
+Night hours are shaded with one flat tint, midnight boundaries are
+dashed, and a two-tier axis (day names over clock hours) is drawn in the
+location's timezone. Everything left of the "now" anchor fades to 45%
+opacity at the range edge.
 
-Night hours are shaded from `sunriseTime`/`sunsetTime`, midnight
-boundaries and a two-tier axis (day names over clock hours) are drawn in
-the location's timezone, and a "now" marker anchors the warp center.
-Everything left of now fades to 45% opacity at the range edge.
+Hover or use arrow keys (Shift for day steps) for a crosshair that puts
+interpolation dots on every series, with a tooltip listing all reported
+fields for the nearest sample and its tier (per-minute, hourly, or daily
+aggregate).
 
-Hover or use arrow keys (Shift for day steps) for a crosshair with a
-full readout: the tooltip lists every field the API reports for the
-nearest sample and labels the sample tier (per-minute, hourly, or daily
-aggregate) so aggregated data never masquerades as precise.
+The axis is a true fisheye lens: the warp function family (power, log,
+asinh, atan, linear) and strength are selectable, and a slider sets
+where "now" sits on the axis. Past range (0-14 days) and future range
+(1-7 days, the API maximum) adjust the data window; units
+(si/us/ca/uk/uk2), summary language, theme (auto/light/dark), layout
+(full/compact), and cloud rendering mode persist in localStorage. `f`
+toggles focus mode (chart only). The styling aims for a quiet scientific
+chart: monochrome inks with one muted hue for temperature.
 
-The warp slider ("Near-now detail") morphs the axis from linear to
-strongly log-like. Past range (0-14 days) and future range (1-7 days)
-are adjustable; units (si/us/ca/uk/uk2), summary language, and theme
-(auto/light/dark) are in the same settings panel and persist in
-localStorage.
+The model blend behind the forecast is adjustable in settings: any of
+Pirate Weather's model families (HRRR, NBM, GFS, GEFS, RTMA, ECMWF IFS,
+MOSMIX, RAQDPS, SILAM) can be excluded, and the AI family
+(AIGFS/AIGEFS/ECMWF-AIFS) can be included via `include=aimodels`. The
+blend is a single merged series upstream; per-model plots are not
+possible with this API.
 
 ## Architecture
 
@@ -67,7 +79,12 @@ this caching is the difference between comfortable and quota exhaustion.
   source and location).
 - Pirate Weather resolves to ~13 km model cells; coordinates are rounded
   to 3 decimals everywhere (cache keys and upstream requests).
-
+- Cloud cover by altitude comes from Open-Meteo and is fetched
+  concurrently; if it fails, the weather response still succeeds with a
+  warning in `meta.warnings`.
+- The only uncertainty field upstream offers is `precipIntensityError`,
+  shown as a halo around future bars. No temperature or wind spread
+  exists in this API, so none is shown.
 ## HTTP API
 
 All routes are unauthenticated and assume a trusted network (see
