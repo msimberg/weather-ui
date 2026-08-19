@@ -199,8 +199,50 @@ export function SettingsPanel() {
             />
             <output>{settings().refreshInterval}</output>
           </label>
+          <fieldset class="band-ratios">
+            <legend>Band heights (relative)</legend>
+            <For each={settings().bandOrder}>
+              {(id) => (
+                <label>
+                  <span class="name">{BAND_TITLE[id] ?? id}</span>
+                  <input
+                    type="range"
+                    min="0.05"
+                    max="0.6"
+                    step="0.01"
+                    value={settings().bandRatios[id as "precip" | "cloud" | "wind" | "temp"] ?? 1}
+                    onInput={(e) =>
+                      setSettings({
+                        bandRatios: {
+                          ...settings().bandRatios,
+                          [id]: Number(e.currentTarget.value),
+                        },
+                      })
+                    }
+                  />
+                  <output>
+                    {((settings().bandRatios[id as "precip" | "cloud" | "wind" | "temp"] ?? 1) *
+                      100) |
+                      0}
+                  </output>
+                </label>
+              )}
+            </For>
+          </fieldset>
+          <label>
+            Compact height
+            <input
+              type="range"
+              min="0.3"
+              max="0.95"
+              step="0.01"
+              value={settings().compactHeightVh}
+              disabled={settings().layout !== "compact"}
+              onInput={(e) => setSettings({ compactHeightVh: Number(e.currentTarget.value) })}
+            />
+            <output>{(settings().compactHeightVh * 100) | 0}%</output>
+          </label>
           <fieldset class="band-order">
-            <legend>Band order (top to bottom)</legend>
             <For each={settings().bandOrder}>
               {(id, i) => (
                 <div class="row">

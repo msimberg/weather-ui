@@ -173,25 +173,35 @@ button.icon-btn {
   line-height: 1;
 }
 
+.current .nowdt {
+  font-size: 12px;
+  color: var(--sub);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
 .current .summary {
   font-size: 13px;
   color: var(--fg);
   max-width: 46ch;
+  margin-right: auto;
 }
-
 .current .summary .next-hour {
   color: var(--sub);
   display: block;
 }
 
 /* Retro data strip: flat key/value readout separated by hairline rules,
-   no rounded pill backgrounds. Labels are small-caps; values tabular. */
+   no rounded pill backgrounds. Labels are small-caps; values tabular.
+   flex-wrap: wrap so the pills can run to multiple lines. They sit to the
+   right of the current-weather summary (whose margin-right:auto pushes
+   them there); when the whole block does not fit it drops to its own
+   line, left-aligned (no margin-left here). */
 .data {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  margin-left: auto;
-  max-width: 62%;
   row-gap: 3px;
 }
 
@@ -457,9 +467,7 @@ footer .warn {
 }
 
 .timeline-wrap.compact {
-  flex: 0 0 auto;
   min-height: 0;
-  height: clamp(360px, 52vh, 560px);
 }
 
 .model-blend {
@@ -501,8 +509,6 @@ footer .warn {
    centers vertically instead of pinning to the screen edges. */
 #root.compact {
   justify-content: center;
-  max-width: 1180px;
-  margin: 0 auto;
 }
 
 /* sun strip: sunrise/sunset times inline */

@@ -27,6 +27,10 @@ export interface Settings {
   excludeModels: string[];
   /** Top-to-bottom order of the data bands. */
   bandOrder: string[];
+  /** Relative heights of the four bands (any positive numbers; normalized). */
+  bandRatios: { precip: number; cloud: number; wind: number; temp: number };
+  /** Compact-mode timeline height as a fraction of the viewport (0.3 - 0.95). */
+  compactHeightVh: number;
   /** Automatic background refresh while the tab is visible. */
   autoRefresh: boolean;
   /** Auto-refresh interval in minutes. */
@@ -48,6 +52,8 @@ const DEFAULT_SETTINGS: Settings = {
   layout: "full",
   excludeModels: [],
   bandOrder: [...BAND_ORDER],
+  bandRatios: { precip: 0.25, cloud: 0.15, wind: 0.25, temp: 0.35 },
+  compactHeightVh: 0.62,
   autoRefresh: false,
   refreshInterval: 10,
   aiModels: false,
@@ -93,6 +99,17 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
   const order = (out.bandOrder ?? []).filter((b) => known.has(b));
   for (const b of BAND_ORDER) if (!order.includes(b)) order.push(b);
   out.bandOrder = order;
+  // Backfill band ratios; clamp each to a positive number.
+  const br = out.bandRatios ?? {};
+  for (const b of BAND_ORDER as (keyof typeof br)[]) {
+    const v = br[b];
+    if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) br[b] = 1;
+  }
+  out.bandRatios = br as { precip: number; cloud: number; wind: number; temp: number };
+  if (typeof out.compactHeightVh !== "number" || !Number.isFinite(out.compactHeightVh)) {
+    out.compactHeightVh = 0.62;
+  }
+  out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
   return out;
 }
 

@@ -71,6 +71,8 @@ export function Timeline() {
       layout: settings().layout,
       cloudViz: settings().cloudViz,
       bandOrder: settings().bandOrder,
+      bandRatios: settings().bandRatios,
+      compactHeightVh: settings().compactHeightVh,
     });
   });
 
@@ -78,7 +80,7 @@ export function Timeline() {
   // band's legend in a native tooltip so the chart itself stays uncluttered.
   const titles = createMemo(() => {
     const s = settings();
-    const L = bandLayout(width(), height(), s.layout, s.bandOrder);
+    const L = bandLayout(width(), height(), s.layout, s.bandOrder, s.bandRatios);
     return s.bandOrder
       .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name], gutter: L.gutter, titleW: L.titleW }))
       .filter((t) => t.rect && t.title);
@@ -144,8 +146,12 @@ export function Timeline() {
     <div
       ref={wrapRef}
       classList={{ "timeline-wrap": true, zen: zen(), compact: settings().layout === "compact" }}
+      style={(() => {
+        const s = settings();
+        if (s.layout !== "compact") return {};
+        return { height: `${Math.round(s.compactHeightVh * 100)}vh`, flex: "0 0 auto" } as Record<string, string>;
+      })()}
       tabIndex={0}
-      role="application"
       aria-label="Weather timeline. Arrow keys move the crosshair. F toggles zen mode."
       onPointerMove={onPointerMove}
       onPointerDown={onPointerMove}

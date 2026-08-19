@@ -10,6 +10,7 @@ import {
   windUnit,
 } from "../format";
 import { model, nowTick, resolvedTheme, settings } from "../state";
+import { formatFull } from "../time";
 import { formatClock } from "../time";
 import type { HourPoint, Units } from "../types";
 
@@ -42,6 +43,7 @@ export function CurrentStrip() {
         return (
           <div class="current">
             <IconCanvas name={cur?.icon} size={44} />
+            <span class="nowdt">{formatFull(m.timezone, nowTick())}</span>
             <span class="big">{formatTemp(cur?.temperature)}</span>
             <span class="summary">
               {cur?.summary ?? ""}
