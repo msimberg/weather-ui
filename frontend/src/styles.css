@@ -194,19 +194,20 @@ button.icon-btn {
 }
 
 /* Retro data strip: flat key/value readout separated by hairline rules.
-   flex 1 1 auto on the data block makes it shrink into the remaining row
-   width and wrap its own pills to a second line, so the pills stay to the
-   right of the current weather instead of dropping below it. Only when the
-   whole row has no room left does the block wrap beneath; justify-content
-   keeps it right-attached there too. */
+   In a wrapping flex container the line-break decision uses the item's
+   flex-basis: with basis "auto" the data block measured as one full line
+   of pills and always wrapped below the current weather. Basis 0 keeps it
+   on the row; grow 1 gives it the leftover width; the pills wrap to two
+   lines inside. Only when the leftover would be narrower than min-width
+   does the whole block drop below, right-attached via justify-content. */
 .data {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: flex-end;
   row-gap: 3px;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 240px;
 }
 
 .datum {

@@ -40,13 +40,26 @@ export const HOUR_STEPS = [1, 2, 3, 6, 12, 24] as const;
 
 // --- day labels ------------------------------------------------------
 
-/** True when every day label fits its span horizontally with margin. Pure so
- * it is unit-testable; the caller measures text widths with the day font. */
+/** True (= stay horizontal) when at least half of the labelable days can
+ * hold their horizontal label. Pure so it is unit-testable; the caller
+ * measures text widths with the day font.
+ *
+ * Rotation is all-or-none, but under the fisheye warp the far-wing days
+ * compress hard, so one narrow wing day would otherwise force the whole row
+ * (including wide near-now days) to rotate. The rule: rotate only when MORE
+ * days would lose their label than keep it. Wing days that stay horizontal
+ * but cannot hold their label drop just that label (ticks remain), the same
+ * treatment tight hour labels get. Slivers narrower than DAY_MIN_SPAN are
+ * never labeled and never count. */
 export function dayLabelsFit(labelWidths: number[], spanWidths: number[]): boolean {
+  let fits = 0;
+  let fails = 0;
   for (let i = 0; i < labelWidths.length; i++) {
-    if (spanWidths[i] >= DAY_MIN_SPAN && labelWidths[i] + 2 * DAY_MARGIN > spanWidths[i]) return false;
+    if (spanWidths[i] < DAY_MIN_SPAN) continue;
+    if (labelWidths[i] + 2 * DAY_MARGIN <= spanWidths[i]) fits++;
+    else fails++;
   }
-  return true;
+  return fails <= fits;
 }
 
 /** One-day label decided for the rotated row: "Today" stays a word (it is
@@ -64,6 +77,7 @@ function drawDayRow(
   X: (t: number) => number,
   canvasH: number,
   rotateAll: boolean,
+  labelWidths: number[],
   y: number,
   belowBand: boolean,
 ) {
@@ -78,11 +92,15 @@ function drawDayRow(
   ctx.font = DAY_FONT;
   ctx.fillStyle = palette.fg;
 
-  for (const g of model.dayGroups) {
+  for (let i = 0; i < model.dayGroups.length; i++) {
+    const g = model.dayGroups[i];
     const x0 = Math.max(L.gutter, X(g.startSec));
     const x1 = Math.min(L.right, X(g.endSec));
     const w = x1 - x0;
     if (w < DAY_MIN_SPAN) continue;
+    // Horizontal mode: a day that cannot hold its own label (typically an
+    // edge sliver) loses just its label instead of rotating the whole row.
+    if (!rotateAll && labelWidths[i] + 2 * DAY_MARGIN > w) continue;
     const cx = (x0 + x1) / 2;
     if (rotateAll) {
       // Emanate from the day midpoint: the text starts there and climbs
@@ -273,8 +291,9 @@ export function drawAxis(
     }
   }
 
-  // Day labels: rotate the whole row as soon as one label no longer fits
-  // its span, so near days and far days are never rendered differently.
+  // Day labels: rotate the whole row as soon as one *meaningfully visible*
+  // label no longer fits its span, so near days and far days are never
+  // rendered differently; clipped edge days are excluded from the decision.
   ctx.font = DAY_FONT;
   const visWidths = model.dayGroups.map(
     (g) => Math.min(right, X(g.endSec)) - Math.max(gutter, X(g.startSec)),
@@ -283,8 +302,8 @@ export function drawAxis(
   const rotateAll = !dayLabelsFit(labelWidths, visWidths);
   const topDayY = L.bandsTop - DAY_ROW_OFFSET;
   const bottomDayY = L.bandsBottom + DAY_ROW_OFFSET;
-  drawDayRow(ctx, palette, model, L, X, canvasH, rotateAll, topDayY, false);
-  drawDayRow(ctx, palette, model, L, X, canvasH, rotateAll, bottomDayY, true);
+  drawDayRow(ctx, palette, model, L, X, canvasH, rotateAll, labelWidths, topDayY, false);
+  drawDayRow(ctx, palette, model, L, X, canvasH, rotateAll, labelWidths, bottomDayY, true);
 
   // Hour labels: uniform step per leading part (see hourLabelTimes).
   const topHourY = L.bandsTop - HOUR_ROW_OFFSET;

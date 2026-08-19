@@ -22,12 +22,33 @@ describe("dayLabelsFit", () => {
     expect(dayLabelsFit([40, 80], [60, 100])).toBe(true);
   });
 
-  it("returns false when one label does not fit, so the row rotates together", () => {
-    expect(dayLabelsFit([40, 80], [60, 90])).toBe(false);
+  it("rotates when more days would lose their label than keep it", () => {
+    expect(dayLabelsFit([40, 80, 80], [60, 90, 90])).toBe(false);
   });
 
   it("ignores spans too narrow to label at all", () => {
     expect(dayLabelsFit([40], [10])).toBe(true);
+  });
+
+  it("one narrow wing day does not rotate an otherwise wide row", () => {
+    // The fisheye-compressed far past day at 68.5 px cannot hold a 70 px
+    // label, but the other eleven days can: stay horizontal.
+    expect(dayLabelsFit(
+      [70, 70, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40],
+      [68, 80, 75, 80, 90, 100, 100, 110, 130, 160, 250, 290],
+    )).toBe(true);
+  });
+
+  it("rotates when the wing days are the majority of tight days", () => {
+    // 7 tight days (labels need 82 px, spans 50-70) out of 12 -> row rotates.
+    expect(dayLabelsFit(
+      [70, 70, 70, 70, 70, 70, 70, 40, 40, 40, 40, 40],
+      [50, 55, 60, 62, 64, 66, 70, 100, 110, 130, 250, 290],
+    )).toBe(false);
+  });
+
+  it("a single tight day in a tiny view still rotates the row", () => {
+    expect(dayLabelsFit([40], [30])).toBe(false);
   });
 });
 
