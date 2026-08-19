@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  lineWeight,
-  pastFade,
-  warpAxis,
-  MIN_PAST_ALPHA,
-  DENSITY_LINE_IN,
-  DENSITY_LINE_FULL,
-  type Warp,
-  type WarpFn,
-} from "./transform";
+import { pastFade, warpAxis, MIN_PAST_ALPHA, type Warp, type WarpFn } from "./transform";
 
 const NOW = 1_750_000_000_000;
 const DAY = 86_400_000;
@@ -67,18 +58,17 @@ describe("warpAxis", () => {
   it("expands near-now and compresses far times when strength > 0", () => {
     for (const fn of ALL_FNS.filter((f) => f !== "linear")) {
       const axis = makeAxis({ fn, strength: 0.6 });
-      const near = axis.pxPerHour(NOW + 3_600_000);
-      const far = axis.pxPerHour(NOW + 6 * DAY);
-      expect(near).toBeGreaterThan(far * 2);
+      const nearPx = axis.t2x(NOW + 3_600_000) - axis.t2x(NOW);
+      const farPx = axis.t2x(NOW + 6 * DAY) - axis.t2x(NOW + 6 * DAY - 3_600_000);
+      expect(nearPx).toBeGreaterThan(farPx * 2);
     }
   });
 
   it("respects linear regardless of strength", () => {
     const axis = makeAxis({ fn: "linear", strength: 1 });
-    expect(axis.pxPerHour(NOW + 3_600_000)).toBeCloseTo(
-      axis.pxPerHour(NOW + 6 * DAY),
-      9,
-    );
+    const nearPx = axis.t2x(NOW + 3_600_000) - axis.t2x(NOW);
+    const farPx = axis.t2x(NOW + 6 * DAY) - axis.t2x(NOW + 6 * DAY - 3_600_000);
+    expect(nearPx).toBeCloseTo(farPx, 9);
   });
 
   it("slides the anchor with nowShare without changing warp shape", () => {
@@ -86,8 +76,10 @@ describe("warpAxis", () => {
     const rightA = makeAxis({ fn: "power", strength: 0.5 }, 4, 7, 1000, 0.7);
     expect(left.cx).toBeCloseTo(200, 6);
     expect(rightA.cx).toBeCloseTo(700, 6);
-    // Shape check: one hour into the future, density ratio stays the limb's own.
-    expect(left.pxPerHour(NOW + DAY)).toBeGreaterThan(left.pxPerHour(NOW + 6 * DAY));
+    // Same shape: at a given fraction of each limb, slopes stay proportional.
+    const dNearL = left.t2x(NOW + 3_600_000) - left.t2x(NOW);
+    const dNearR = rightA.t2x(NOW + 3_600_000) - rightA.t2x(NOW);
+    expect(dNearR / dNearL).toBeCloseTo((1000 - rightA.cx) / (1000 - left.cx), 6);
   });
 });
 
@@ -97,19 +89,6 @@ describe("pastFade", () => {
     expect(pastFade(NOW, NOW, past)).toBe(1);
     expect(pastFade(NOW + DAY, NOW, past)).toBe(1);
     expect(pastFade(NOW - past, NOW, past)).toBeCloseTo(MIN_PAST_ALPHA, 9);
-    expect(pastFade(NOW - past / 2, NOW, past)).toBeCloseTo(
-      (1 + MIN_PAST_ALPHA) / 2,
-      9,
-    );
-  });
-});
-
-describe("lineWeight", () => {
-  it("crossfades between the density thresholds", () => {
-    expect(lineWeight(1)).toBe(0);
-    expect(lineWeight(DENSITY_LINE_IN)).toBe(0);
-    expect(lineWeight(DENSITY_LINE_FULL)).toBe(1);
-    expect(lineWeight(100)).toBe(1);
-    expect(lineWeight((DENSITY_LINE_IN + DENSITY_LINE_FULL) / 2)).toBeCloseTo(0.5);
+    expect(pastFade(NOW - past / 2, NOW, past)).toBeCloseTo((1 + MIN_PAST_ALPHA) / 2, 9);
   });
 });

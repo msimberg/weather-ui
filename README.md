@@ -17,20 +17,25 @@ altitude-layered cloud cover from Open-Meteo (no key required).
    halo where reported, a probability line, per-minute nowcast bars
    where pixels allow, and per-day accumulation totals.
 2. **Temperature**: smoothed hourly temperature and apparent temperature
-   lines. Where the axis compresses below reading density, lines
-   crossfade into a smooth envelope through the daily min/max extremes
-   with H/L labels. All handoffs are driven by pixel density, not fixed
-   cutoffs.
+   lines, with high and low temperature labels for each day.
 3. **Wind**: speed and gust lines with WMO wind barbs (shaft points
    where the wind comes from; feathers mark 5/10/50 knot classes).
-4. **Cloud / UV**: default is density shading (column darkness = total
-   cover) plus low/mid/high layer hairlines from Open-Meteo and a UV
-   line; a settings toggle restores the area rendering.
+4. **Cloud / UV**: the Open-Meteo low/mid/high cloud series are merged
+   into one gray density mass (darker = more total cover), and a UV step
+   line with value labels runs on top.
 
 Night hours are shaded with one flat tint, midnight boundaries are
 dashed, and a two-tier axis (day names over clock hours) is drawn in the
-location's timezone. Everything left of the "now" anchor fades to 45%
-opacity at the range edge.
+location's timezone on both the top and the bottom. Day labels stay
+horizontal until one would not fit its day span; then the whole row
+rotates together so every day label reads the same way. Hour labels
+always show a complete arithmetic progression inside each part of a day
+(0 3 6 9 ... or 0 6 12 18, never a sequence with a hole); the part
+before and the part after "now" may use different steps because the
+warp makes their densities different. Near-now hours of the current day
+also get faint dashed gridlines, aligned one-to-one with the labeled
+hours. Data left of the "now" anchor fades to 45% opacity at the range
+edge.
 
 Hover or use arrow keys (Shift for day steps) for a crosshair that puts
 interpolation dots on every series, with a tooltip listing all reported
@@ -41,10 +46,14 @@ The axis is a true fisheye lens: the warp function family (power, log,
 asinh, atan, linear) and strength are selectable, and a slider sets
 where "now" sits on the axis. Past range (0-14 days) and future range
 (1-7 days, the API maximum) adjust the data window; units
-(si/us/ca/uk/uk2), summary language, theme (auto/light/dark), layout
-(full/compact), and cloud rendering mode persist in localStorage. `f`
-toggles focus mode (chart only). The styling aims for a quiet scientific
-chart: monochrome inks with one muted hue for temperature.
+(si/us/ca/uk/uk2), summary language, theme (auto/light/dark), and
+layout persist in localStorage. The layout toggle switches between a
+full-height chart and a compact one centered on screen; band order,
+relative band heights, and the compact height are all adjustable. `f`
+toggles focus mode (chart only). An optional auto-refresh refetches data
+at a configurable interval while the tab is visible. The styling aims
+for a quiet scientific chart: one near-neutral ink family per theme with
+no accent hues.
 
 The model blend behind the forecast is adjustable in settings: any of
 Pirate Weather's model families (HRRR, NBM, GFS, GEFS, RTMA, ECMWF IFS,

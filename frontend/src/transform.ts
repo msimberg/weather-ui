@@ -1,10 +1,8 @@
 // The time axis is a warped mapping centered on "now": each limb maps its
 // time range through a monotonic curve f: [0,1] -> [0,1] with f(0)=0, f(1)=1.
 // Curves with f'(0) > f'(1) expand the near term and compress the far term,
-// smoothly, like a fisheye/focus+context lens. Every curve carries its
-// inverse and derivative so the crosshair can map pixels back to time and the
-// renderer can measure local pixel density (px per hour), which drives all
-// detail handoffs.
+// smoothly, like a fisheye/focus+context lens. Every curve also carries its
+// inverse, which the crosshair uses to map pixels back to time.
 
 export type WarpFn = "linear" | "power" | "log" | "asinh" | "atan";
 
@@ -22,7 +20,6 @@ export const DEFAULT_NOW_SHARE = 0.44;
 interface Curve {
   f(u: number): number;
   inv(v: number): number;
-  d(u: number): number;
 }
 
 function asinh(x: number): number {
@@ -33,11 +30,11 @@ function curveFor(warp: Warp): Curve {
   const s = Math.min(1, Math.max(0, warp.strength));
   switch (warp.fn) {
     case "linear":
-      return { f: (u) => u, inv: (v) => v, d: () => 1 };
+      return { f: (u) => u, inv: (v) => v };
     case "power": {
       // strength 0 -> exponent 1 (linear), strength 1 -> 0.15.
       const k = 1 - 0.85 * s;
-      return { f: (u) => Math.pow(u, k), inv: (v) => Math.pow(v, 1 / k), d: (u) => k * Math.pow(u, k - 1) };
+      return { f: (u) => Math.pow(u, k), inv: (v) => Math.pow(v, 1 / k) };
     }
     case "log": {
       const k = 0.01 + 99 * s;
@@ -45,7 +42,6 @@ function curveFor(warp: Warp): Curve {
       return {
         f: (u) => Math.log(1 + u * k) / c,
         inv: (v) => (Math.exp(v * c) - 1) / k,
-        d: (u) => k / ((1 + u * k) * c),
       };
     }
     case "asinh": {
@@ -54,7 +50,6 @@ function curveFor(warp: Warp): Curve {
       return {
         f: (u) => asinh(u * k) / c,
         inv: (v) => Math.sinh(v * c) / k,
-        d: (u) => k / (c * Math.sqrt(1 + u * u * k * k)),
       };
     }
     case "atan": {
@@ -63,7 +58,6 @@ function curveFor(warp: Warp): Curve {
       return {
         f: (u) => Math.atan(u * k) / c,
         inv: (v) => Math.tan(v * c) / k,
-        d: (u) => k / (c * (1 + u * u * k * k)),
       };
     }
   }
@@ -74,8 +68,6 @@ export interface TimeAxis {
   t2x(tMs: number): number;
   /** css pixels -> unix milliseconds, clamped to the range */
   x2t(x: number): number;
-  /** |dx/dt| at tMs, in px per hour; Infinity exactly at now for strong warps */
-  pxPerHour(tMs: number): number;
   now: number;
   pastMs: number;
   futureMs: number;
@@ -83,8 +75,6 @@ export interface TimeAxis {
   /** pixel position of t == now */
   cx: number;
 }
-
-const MS_PER_HOUR = 3_600_000;
 
 /** nowShare is the fraction of the width left of "now". The limbs warp
  * independently, so the share only slides the anchor, never changes shape. */
@@ -119,19 +109,8 @@ export function warpAxis(
     return now + curve.inv(v) * futureMs;
   }
 
-  function pxPerHour(tMs: number): number {
-    const dt = tMs - now;
-    const span = dt < 0 ? cx : width - cx;
-    const range = dt < 0 ? pastMs : futureMs;
-    const u = Math.min(1, Math.abs(dt) / range);
-    if (u === 0) {
-      const d0 = curve.d(0);
-      return d0 === Infinity ? Infinity : (span * d0) / range * MS_PER_HOUR;
-    }
-    return ((span * curve.d(u)) / range) * MS_PER_HOUR;
-  }
 
-  return { t2x, x2t, pxPerHour, now, pastMs, futureMs, width, cx };
+  return { t2x, x2t, now, pastMs, futureMs, width, cx };
 }
 
 /** Multiplicative fade for past data: 1 at now, MIN_PAST_ALPHA at the far edge. */
@@ -147,16 +126,3 @@ export function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/**
- * Local detail weight derived from pixel density. Below DENSITY_LINE_IN the
- * hourly line is invisible (daily band only); above DENSITY_LINE_FULL it is
- * fully drawn. In between the two are crossfaded. Densities are in px per hour.
- */
-export const DENSITY_LINE_IN = 2.2;
-export const DENSITY_LINE_FULL = 7;
-
-export function lineWeight(pxPerHour: number): number {
-  return clamp01(
-    (pxPerHour - DENSITY_LINE_IN) / (DENSITY_LINE_FULL - DENSITY_LINE_IN),
-  );
-}

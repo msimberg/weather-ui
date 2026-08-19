@@ -6,54 +6,46 @@ import {
   BAND_TITLE,
   DARK,
   LIGHT,
+  TITLE_W,
   bandLayout,
+  leftGutter,
+  RIGHT_PAD,
   renderTimeline,
   type Palette,
 } from "../render";
 import {
+  focus,
   hoverSec,
   model,
   nowTick,
   resolvedTheme,
+  setFocus,
   setHoverSec,
   settings,
-  setZen,
   status,
-  zen,
 } from "../state";
 import { warpAxis, type TimeAxis } from "../transform";
 import { Tooltip } from "./Tooltip";
 
-/** Left label gutter shared between the axis builder and the renderer. */
-export function leftGutter(cssW: number): number {
-  return Math.max(44, Math.min(64, cssW * 0.075));
-}
-
-const RIGHT_PAD = 6;
-
 export function Timeline() {
   let wrapRef!: HTMLDivElement;
   let canvasRef!: HTMLCanvasElement;
-  // Width is a signal because the axis depends on it; ResizeObserver feeds it.
   // Width and height are signals because the axis and the band-title
   // overlay both depend on the canvas size; ResizeObserver feeds them.
   const [width, setWidth] = createSignal(1200);
   const [height, setHeight] = createSignal(600);
+
+  // One coordinate system: leftGutter/RIGHT_PAD here must match the
+  // renderer's bandLayout, else the crosshair and labels drift apart.
   const axis = createMemo<TimeAxis | null>(() => {
-    if (!model()) return null;
+    const m = model();
+    if (!m) return null;
     const w = width();
-    const gutter = leftGutter(w);
     const s = settings();
     const { pastMs, futureMs } = axisRanges(s.pastDays);
     const future = Math.min(futureMs, s.futureDays * 86_400_000);
-    return warpAxis(
-      nowTick() * 1000,
-      pastMs,
-      future,
-      Math.max(50, w - gutter - RIGHT_PAD),
-      { fn: s.warpFn, strength: s.warpStrength },
-      s.nowShare,
-    );
+    const axisW = Math.max(50, w - leftGutter(w) - RIGHT_PAD);
+    return warpAxis(nowTick() * 1000, pastMs, future, axisW, { fn: s.warpFn, strength: s.warpStrength }, s.nowShare);
   });
 
   const palette = createMemo<Palette>(() => (resolvedTheme() === "light" ? LIGHT : DARK));
@@ -68,11 +60,8 @@ export function Timeline() {
       units: settings().units,
       palette: palette(),
       hoverSec: hoverSec(),
-      layout: settings().layout,
-      cloudViz: settings().cloudViz,
       bandOrder: settings().bandOrder,
       bandRatios: settings().bandRatios,
-      compactHeightVh: settings().compactHeightVh,
     });
   });
 
@@ -80,10 +69,19 @@ export function Timeline() {
   // band's legend in a native tooltip so the chart itself stays uncluttered.
   const titles = createMemo(() => {
     const s = settings();
-    const L = bandLayout(width(), height(), s.layout, s.bandOrder, s.bandRatios);
+    const L = bandLayout(width(), height(), s.bandOrder, s.bandRatios);
     return s.bandOrder
-      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name], gutter: L.gutter, titleW: L.titleW }))
+      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name], gutter: L.gutter }))
       .filter((t) => t.rect && t.title);
+  });
+
+  // In compact mode the wrap is shorter than the viewport; set its height
+  // here (inline, so it tracks the slider immediately) and let the flex
+  // column (#root.compact) center the whole stack around it.
+  const wrapStyle = createMemo(() => {
+    const s = settings();
+    if (s.layout !== "compact") return undefined;
+    return { height: `${Math.round(s.compactHeightVh * 100)}vh`, flex: "0 0 auto" } as const;
   });
 
   onMount(() => {
@@ -126,9 +124,7 @@ export function Timeline() {
     const base = hoverSec() ?? nowTick();
     const step = e.shiftKey ? 86_400 : 3600;
     const next = base + (e.key === "ArrowLeft" ? -step : step);
-    setHoverSec(
-      Math.min(Math.max(next, ax.x2t(0) / 1000), (ax.now + ax.futureMs) / 1000),
-    );
+    setHoverSec(Math.min(Math.max(next, ax.x2t(0) / 1000), (ax.now + ax.futureMs) / 1000));
   }
 
   const tooltipAnchor = createMemo(() => {
@@ -145,14 +141,11 @@ export function Timeline() {
   return (
     <div
       ref={wrapRef}
-      classList={{ "timeline-wrap": true, zen: zen(), compact: settings().layout === "compact" }}
-      style={(() => {
-        const s = settings();
-        if (s.layout !== "compact") return {};
-        return { height: `${Math.round(s.compactHeightVh * 100)}vh`, flex: "0 0 auto" } as Record<string, string>;
-      })()}
+      classList={{ "timeline-wrap": true, compact: settings().layout === "compact" }}
+      style={wrapStyle()}
       tabIndex={0}
-      aria-label="Weather timeline. Arrow keys move the crosshair. F toggles zen mode."
+      role="application"
+      aria-label="Weather timeline. Arrow keys move the crosshair. F toggles focus mode."
       onPointerMove={onPointerMove}
       onPointerDown={onPointerMove}
       onPointerLeave={onPointerLeave}
@@ -165,7 +158,7 @@ export function Timeline() {
             class="band-title"
             title={t.title}
             style={{
-              left: `${t.gutter - t.titleW - 2}px`,
+              left: `${t.gutter - TITLE_W - 2}px`,
               top: `${t.rect.y0 + 4}px`,
               height: `${Math.max(12, t.rect.y1 - t.rect.y0 - 8)}px`,
             }}
@@ -174,13 +167,8 @@ export function Timeline() {
           </span>
         )}
       </For>
-      <button
-        type="button"
-        class="focus-btn"
-        onClick={() => setZen(!zen())}
-        title="Toggle focus mode (f)"
-      >
-        {zen() ? "exit focus" : "focus"}
+      <button type="button" class="focus-btn" onClick={() => setFocus(!focus())} title="Toggle focus mode (f)">
+        {focus() ? "exit focus" : "focus"}
       </button>
       <Show when={status() === "loading"}>
         <div class="loadbar" aria-hidden="true" />
@@ -188,9 +176,7 @@ export function Timeline() {
       <Show when={hoverSec() !== null && model() !== null && tooltipAnchor()}>
         {(anchor) => (
           <Show when={model()} keyed>
-            {(m: Prepared) => (
-              <Tooltip model={m} tSec={hoverSec() as number} style={anchor()} />
-            )}
+            {(m: Prepared) => <Tooltip model={m} tSec={hoverSec() as number} style={anchor()} />}
           </Show>
         )}
       </Show>

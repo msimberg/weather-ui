@@ -5,11 +5,11 @@ import { CurrentStrip, SunStrip } from "./components/CurrentStrip";
 import { SearchBar } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Timeline } from "./components/Timeline";
-import { errorMsg, location, model, setZen, stale, settings, status, zen } from "./state";
+import { errorMsg, focus, location, model, setFocus, stale, settings, status } from "./state";
 
 export function App() {
   createEffect(() => {
-    document.getElementById("root")?.classList.toggle("focus", zen());
+    document.getElementById("root")?.classList.toggle("focus", focus());
     document.getElementById("root")?.classList.toggle("compact", settings().layout === "compact");
   });
   onMount(() => {
@@ -17,7 +17,7 @@ export function App() {
       if (e.key !== "f" && e.key !== "F") return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      setZen(!zen());
+      setFocus(!focus());
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));

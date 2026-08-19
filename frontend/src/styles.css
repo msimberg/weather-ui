@@ -185,24 +185,28 @@ button.icon-btn {
   font-size: 13px;
   color: var(--fg);
   max-width: 46ch;
-  margin-right: auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .current .summary .next-hour {
   color: var(--sub);
   display: block;
 }
 
-/* Retro data strip: flat key/value readout separated by hairline rules,
-   no rounded pill backgrounds. Labels are small-caps; values tabular.
-   flex-wrap: wrap so the pills can run to multiple lines. They sit to the
-   right of the current-weather summary (whose margin-right:auto pushes
-   them there); when the whole block does not fit it drops to its own
-   line, left-aligned (no margin-left here). */
+/* Retro data strip: flat key/value readout separated by hairline rules.
+   flex 1 1 auto on the data block makes it shrink into the remaining row
+   width and wrap its own pills to a second line, so the pills stay to the
+   right of the current weather instead of dropping below it. Only when the
+   whole row has no room left does the block wrap beneath; justify-content
+   keeps it right-attached there too. */
 .data {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  justify-content: flex-end;
   row-gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .datum {
@@ -504,14 +508,12 @@ footer .warn {
   min-height: 100vh;
 }
 
-/* compact mode: the timeline no longer grows to fill the viewport, so the
-   header and footer sit just above and below the chart and the whole stack
-   centers vertically instead of pinning to the screen edges. */
+/* Compact mode: the wrap sets its own height (inline, from the settings
+   slider) and the column distributes the leftover viewport space evenly
+   above the header and below the footer. So the chart floats in the middle
+   with header and footer hugging it, leaving no gaps in between. */
 #root.compact {
-  /* Pack header, chart, and footer together so
-     compact mode has no large gaps around the chart. */
-  justify-content: flex-start;
-  min-height: 0;
+  justify-content: center;
 }
 
 /* sun strip: sunrise/sunset times inline */
@@ -535,7 +537,7 @@ footer .warn {
 
 @media (max-width: 720px) {
   .data {
-    margin-left: 0;
+    flex-basis: 100%;
   }
   .timeline-wrap {
     min-height: 380px;

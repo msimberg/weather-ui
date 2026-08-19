@@ -134,16 +134,6 @@ export function SettingsPanel() {
             </select>
           </label>
           <label>
-            Cloud viz
-            <select
-              value={settings().cloudViz}
-              onChange={(e) => setSettings({ cloudViz: e.currentTarget.value as "density" | "area" })}
-            >
-              <option value="density">Density shading</option>
-              <option value="area">Area + UV line</option>
-            </select>
-          </label>
-          <label>
             Units
             <select
               value={settings().units}

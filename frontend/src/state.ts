@@ -19,8 +19,6 @@ export interface Settings {
   warpStrength: number;
   /** Fraction of the axis width left of the "now" anchor. */
   nowShare: number;
-  /** Cloud band style: density columns vs area + UV line. */
-  cloudViz: "density" | "area";
   /** full = bands fill the viewport height; compact = shorter, centered. */
   layout: "full" | "compact";
   /** Pirate Weather model families removed from the blend. */
@@ -48,7 +46,6 @@ const DEFAULT_SETTINGS: Settings = {
   warpFn: DEFAULT_WARP.fn,
   warpStrength: DEFAULT_WARP.strength,
   nowShare: DEFAULT_NOW_SHARE,
-  cloudViz: "density",
   layout: "full",
   excludeModels: [],
   bandOrder: [...BAND_ORDER],
@@ -99,13 +96,13 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
   const order = (out.bandOrder ?? []).filter((b) => known.has(b));
   for (const b of BAND_ORDER) if (!order.includes(b)) order.push(b);
   out.bandOrder = order;
-  // Backfill band ratios; clamp each to a positive number.
-  const br = out.bandRatios ?? {};
-  for (const b of BAND_ORDER as (keyof typeof br)[]) {
-    const v = br[b];
-    if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) br[b] = 1;
+  // Backfill band ratios; drop stale keys from removed settings fields.
+  const br: Record<string, number> = {};
+  for (const b of BAND_ORDER) {
+    const v = (out.bandRatios as Record<string, number>)[b];
+    br[b] = typeof v === "number" && Number.isFinite(v) && v > 0 ? v : (DEFAULT_SETTINGS.bandRatios as Record<string, number>)[b];
   }
-  out.bandRatios = br as { precip: number; cloud: number; wind: number; temp: number };
+  out.bandRatios = br as Settings["bandRatios"];
   if (typeof out.compactHeightVh !== "number" || !Number.isFinite(out.compactHeightVh)) {
     out.compactHeightVh = 0.62;
   }
@@ -130,8 +127,8 @@ export const [stale, setStale] = createSignal(false);
 export const [hoverSec, setHoverSec] = createSignal<number | null>(null);
 /** Ticks every 30s so "now" and the axis drift with wall time. */
 export const [nowTick, setNowTick] = createSignal(Math.floor(Date.now() / 1000));
-/** Zen mode: hides header/strip/footer so only the timeline remains. */
-export const [zen, setZen] = createSignal(false);
+/** Focus mode: hides header/strip/footer so only the timeline remains. */
+export const [focus, setFocus] = createSignal(false);
 
 export function setSettings(patch: Partial<Settings>): void {
   setSettingsRaw((s) => ({ ...s, ...patch }));

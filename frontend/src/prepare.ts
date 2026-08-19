@@ -1,5 +1,5 @@
 import type { DayPoint, HourPoint, MinutePoint, WeatherPayload } from "./types";
-import { formatDayLabel, localMidnight } from "./time";
+import { formatDayLabel, formatDayShort, localMidnight } from "./time";
 
 // prepare() converts the API payload into the render model: domain bounds,
 // night shading intervals, and per-day groupings. It runs once per fetch, so
@@ -21,7 +21,10 @@ export interface DayGroup {
   /** local-midnight unix second at the location */
   startSec: number;
   endSec: number;
+  /** Relative label ("Today", "Tomorrow", "Yesterday", or weekday + day). */
   label: string;
+  /** Short month-free label ("Mon 12") used when day labels rotate. */
+  short: string;
   day: DayPoint;
 }
 
@@ -77,6 +80,7 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     startSec: midnights[i],
     endSec: midnights[i + 1] ?? midnights[i] + 86_400,
     label: formatDayLabel(tz, day.time, nowSec),
+    short: formatDayShort(tz, day.time),
     day,
   }));
 

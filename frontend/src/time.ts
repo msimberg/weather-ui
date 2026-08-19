@@ -95,6 +95,12 @@ export function formatDayLabel(tz: string, tSec: number, nowSec: number): string
   if (delta === 0) return "Today";
   if (delta === 1) return "Tomorrow";
   if (delta === -1) return "Yesterday";
+  return formatDayShort(tz, tSec);
+}
+
+/** Short day label ("Mon 12"). Used on the axis when day labels rotate. */
+export function formatDayShort(tz: string, tSec: number): string {
+  const here = localWallClock(tz, tSec);
   return `${WEEKDAYS[here.weekday]} ${here.day}`;
 }
 
