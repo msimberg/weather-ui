@@ -105,7 +105,7 @@ export const BAND_EXPLAIN: Record<string, string> = {
   precip:
     "Bars = hourly intensity (sqrt scale, by type). Line = probability. Halo = upstream intensity error. Per-day total shown where space allows.",
   cloud:
-    "Puffs = cloud cover at low / mid / high altitude (darker = more cover). Step line = UV index.",
+    "Blended cloud cover at low / mid / high altitude (darker = more cover). Step line = UV index, scaled to the day's peak.",
   wind:
     "Line = speed. Thin line = gusts. Barbs point where the wind comes from; feathers mark 5 / 10 / 50 knots.",
   temp:
@@ -124,26 +124,26 @@ export interface ViewOptions {
 }
 
 const BAND_FRAC: Record<string, number> = {
-  precip: 0.15,
-  cloud: 0.27,
-  wind: 0.18,
-  temp: 0.4,
-};
-
-// In compact mode the cloud band gets more room (it should feel like
-// horizontally-spread cloud) and the wind band less.
-const BAND_FRAC_COMPACT: Record<string, number> = {
-  precip: 0.12,
-  cloud: 0.38,
+  precip: 0.13,
+  cloud: 0.46,
   wind: 0.13,
-  temp: 0.37,
+  temp: 0.28,
 };
 
-const TOP_PAD = 4;
-const TOP_AXIS_H = 20;
-const BOTTOM_AXIS_H = 26;
+// In compact mode the cloud band dominates so it reads as horizontally-spread
+// cloud rather than a thin strip; the other bands shrink.
+const BAND_FRAC_COMPACT: Record<string, number> = {
+  precip: 0.10,
+  cloud: 0.56,
+  wind: 0.09,
+  temp: 0.25,
+};
+
+const TOP_PAD = 6;
+const TOP_AXIS_H = 58;
+const BOTTOM_AXIS_H = 52;
 const BAND_GAP = 4;
-const TITLE_W = 14;
+const TITLE_W = 12;
 
 export interface BandRect {
   y0: number;
@@ -164,7 +164,9 @@ export interface Layout {
 }
 
 export function bandLayout(cssW: number, cssH: number, layout: "full" | "compact", order: string[]): Layout {
-  const gutter = Math.max(44, Math.min(64, cssW * 0.075));
+  // Tiny gutter: the canvas should fill the available width, with the band
+  // titles and leftmost hour labels overlaid on top of it.
+  const gutter = Math.max(14, Math.min(22, cssW * 0.014));
   const right = cssW - 6;
   let top = TOP_PAD + TOP_AXIS_H;
   let bottom = cssH - BOTTOM_AXIS_H;
@@ -195,10 +197,10 @@ export function bandLayout(cssW: number, cssH: number, layout: "full" | "compact
     bandsTop: top,
     bandsBottom: bottom,
     bands,
-    topDayY: top - 16,
-    topHourY: top - 5,
-    bottomHourY: bottom + 12,
-    bottomDayY: bottom + 22,
+    topDayY: top - 48,
+    topHourY: top - 16,
+    bottomHourY: bottom + 16,
+    bottomDayY: bottom + 48,
   };
 }
 
@@ -320,6 +322,8 @@ export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view:
   const L = bandLayout(cssW, cssH, view.layout, view.bandOrder);
   const { gutter, right, bandsTop, bandsBottom } = L;
   const X = (tSec: number): number => gutter + axis.t2x(tSec * 1000);
+  /** Inverse of X: pixel position -> time in seconds (for column sampling). */
+  const tAtX = (x: number): number => axis.x2t((x - gutter) * 1) / 1000;
   const Xnow = gutter + axis.cx;
   const fade = (tSec: number): number => pastFade(tSec * 1000, axis.now, axis.pastMs);
 
@@ -341,8 +345,8 @@ export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view:
     if (!band) continue;
     if (name === "precip") drawPrecip(ctx, model, view, band, X, fade, labels, gutter, right);
     else if (name === "temp") drawTemp(ctx, model, view, band, X, fade, labels, gutter, right);
-    else if (name === "wind") drawWind(ctx, model, view, band, X, fade, labels, gutter);
-    else if (name === "cloud") drawCloud(ctx, model, view, band, X, fade, labels);
+    else if (name === "wind") drawWind(ctx, model, view, band, X, fade, labels, gutter, right);
+    else if (name === "cloud") drawCloud(ctx, model, view, band, X, tAtX, fade, labels);
   }
 
   // Fade everything data-ward of now, linearly toward MIN_PAST_ALPHA at the
@@ -358,6 +362,9 @@ export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view:
   ctx.fillStyle = grad;
   ctx.fillRect(gutter, bandsTop, Xnow - gutter, bandsBottom - bandsTop);
   ctx.restore();
+  // Faint vertical lines at each displayed hour, only for the current day,
+  // so the near-now region reads against a soft hourly grid.
+  drawCurrentDayHours(ctx, palette, model, view, X, L, gutter, right);
 
   drawAxis(ctx, palette, model, L, X, gutter, right);
   drawNow(ctx, palette, Xnow, bandsTop, bandsBottom, L.bottomDayY);
@@ -472,23 +479,34 @@ function drawPrecip(
     });
   }
 
+  // Contiguous bars: each spans to the midpoint with its neighbours, so
+  // there is never a gap (especially on wide windows and the current day).
   const xs = model.hours.map((hr) => X(hr.time));
+  const barX = (i: number): [number, number] => {
+    const here = xs[i];
+    const prev = i > 0 ? xs[i - 1] : 2 * here - xs[i + 1];
+    const next = i < xs.length - 1 ? xs[i + 1] : 2 * here - prev;
+    const x0 = Math.max(gutter, (prev + here) / 2);
+    const x1 = Math.min(right, (here + next) / 2);
+    return [x0, Math.max(x0 + 0.5, x1)];
+  };
   for (let i = 0; i < model.hours.length; i++) {
     const hr = model.hours[i];
     const v = hr.precipIntensity ?? 0;
     const err = hr.precipIntensityError ?? 0;
     const w = fade(hr.time);
-    const bw = slotWidth(xs, i, 22);
+    const [x0, x1] = barX(i);
+    const bw = x1 - x0;
     if (err > 0.02 && v + err > 0.01) {
       const lo = Math.max(0, v - err);
       ctx.globalAlpha = 0.18 * w;
       ctx.fillStyle = precipColor(hr.precipType, palette);
-      ctx.fillRect(xs[i] - bw / 2, base - h(v + err), bw, Math.max(1, h(v + err) - h(lo)));
+      ctx.fillRect(x0, base - h(v + err), bw, Math.max(1, h(v + err) - h(lo)));
     }
     if (v > 0.01) {
       ctx.globalAlpha = 0.92 * w;
       ctx.fillStyle = precipColor(hr.precipType, palette);
-      ctx.fillRect(xs[i] - bw / 2, base - h(v), bw, h(v));
+      ctx.fillRect(x0, base - h(v), bw, h(v));
     }
   }
 
@@ -511,7 +529,7 @@ function drawPrecip(
   labels.reset();
   ctx.font = `10px ${UI_FONT}`;
   ctx.textAlign = "center";
-  ctx.textBaseline = "top";
+  ctx.textBaseline = "bottom";
   for (const g of model.dayGroups) {
     const accum = g.day.precipAccumulation;
     if (accum === undefined || accum <= 0.2) continue;
@@ -522,12 +540,17 @@ function drawPrecip(
     if (!labels.tryPlace(cx, 20)) continue;
     const mid = (g.startSec + g.endSec) / 2;
     ctx.globalAlpha = Math.min(1, fade(mid) + 0.15);
-    ctx.fillStyle = palette.sub;
     const text =
       view.units === "us"
         ? `${accum.toFixed(2)}in`
         : `${(accum * 10).toFixed(accum * 10 < 10 ? 1 : 0)}mm total`;
-    ctx.fillText(text, cx, band.y0 + 4, 90);
+    // The label sits at the foot of the band, over the rain bars, so it
+    // gets a bg-colored stroke outline to stay legible there.
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = palette.bg;
+    ctx.strokeText(text, cx, band.y1 - 3, 90);
+    ctx.fillStyle = palette.sub;
+    ctx.fillText(text, cx, band.y1 - 3, 90);
   }
   ctx.globalAlpha = 1;
 }
@@ -735,6 +758,7 @@ function drawWind(
   fade: (t: number) => number,
   labels: GreedyLabels,
   gutter: number,
+  right: number,
 ) {
   const { palette } = view;
   const y = (v: number): number => bandY(band, v / model.domains.windMax);
@@ -763,9 +787,73 @@ function drawWind(
     drawBarb(ctx, x, y(hr.windSpeed), hr.windBearing, toKnots(hr.windSpeed, view.units), palette.wind, palette.bg);
   }
   ctx.globalAlpha = 1;
+
+  // Daily maximum gust: one dot + value per day, at the hour that peaked,
+  // placed at the top of the band with a bg halo so it reads over the line.
+  labels.reset();
+  ctx.font = `600 10px ${UI_FONT}`;
+  ctx.textAlign = "center";
+  for (const g of model.dayGroups) {
+    let best = -Infinity;
+    let bt: HourPoint | null = null;
+    for (const hr of model.hours) {
+      if (hr.time < g.startSec || hr.time >= g.endSec) continue;
+      const v = hr.windGust ?? hr.windSpeed;
+      if (v !== undefined && v > best) {
+        best = v;
+        bt = hr;
+      }
+    }
+    if (!bt || best <= 0) continue;
+    const x = clampX(X(bt.time), gutter, right);
+    const yy = y(best);
+    ctx.globalAlpha = Math.min(1, fade((g.startSec + g.endSec) / 2) + 0.15);
+    ctx.fillStyle = palette.bg;
+    ctx.beginPath();
+    ctx.arc(x, yy, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = palette.gust;
+    ctx.beginPath();
+    ctx.arc(x, yy, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    const text = `${best.toFixed(0)}`;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = palette.bg;
+    ctx.textBaseline = "bottom";
+    ctx.strokeText(text, x, yy - 5);
+    ctx.fillStyle = palette.gust;
+    ctx.fillText(text, x, yy - 5);
+  }
+  ctx.globalAlpha = 1;
 }
 
 // --- cloud / uv -----------------------------------------------------------
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Linear interpolation of a per-timestamp series at tSec. */
+function interpSeries(times: number[], vals: number[], tSec: number): number {
+  if (times.length === 0) return 0;
+  if (tSec <= times[0]) return vals[0] ?? 0;
+  if (tSec >= times[times.length - 1]) return vals[times.length - 1] ?? 0;
+  let lo = 0;
+  let hi = times.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= tSec) lo = mid;
+    else hi = mid;
+  }
+  const span = times[hi] - times[lo] || 1;
+  const u = (tSec - times[lo]) / span;
+  return (vals[lo] ?? 0) * (1 - u) + (vals[hi] ?? 0) * u;
+}
+
+const LANE_C = [0.16, 0.5, 0.84] as const;
+const LANE_HW = 0.22; // half-width of each lane's vertical falloff
 
 function drawCloud(
   ctx: Ctx,
@@ -773,41 +861,61 @@ function drawCloud(
   view: ViewOptions,
   band: BandRect,
   X: (t: number) => number,
+  tAtX: (x: number) => number,
   fade: (t: number) => number,
   labels: GreedyLabels,
 ) {
   const { palette } = view;
   const bg = palette.bg;
-  const depth = band.y1 - band.y0;
-  // Three contiguous altitude zones (no gaps): high at the top, mid in the
-  // middle, low at the bottom. Each is a row of rectangles so they tile
-  // cleanly without the overlap darkening the ellipses produced.
-  const zoneH = depth / 3;
-  const zones = [
-    { y0: band.y0, y1: band.y0 + zoneH, key: "high" as const, color: palette.layerHi },
-    { y0: band.y0 + zoneH, y1: band.y0 + 2 * zoneH, key: "mid" as const, color: palette.layerMid },
-    { y0: band.y0 + 2 * zoneH, y1: band.y1, key: "low" as const, color: palette.layerLo },
-  ];
+  const y0 = band.y0;
+  const y1 = band.y1;
+  const depth = y1 - y0;
   const layers = model.cloudLayers;
-  const coverAt = (key: "low" | "mid" | "high", hr: HourPoint): number | undefined => {
-    if (layers && layers[key]) {
-      const li = nearestIndex(layers.time, hr.time);
-      return li >= 0 ? layers[key][li] : undefined;
+
+  // Coverage at tSec for each lane, horizontally interpolated between
+  // timestamps so there are no hard edges between hours. Mid falls back to
+  // the per-hour cloudCover when no layer series is present.
+  const midTimes = layers?.time ?? model.hours.map((h) => h.time);
+  const midVals = layers?.mid ?? model.hours.map((h) => h.cloudCover ?? 0);
+  const hiVals = layers?.high ?? [];
+  const loVals = layers?.low ?? [];
+  const cov = (tSec: number): [number, number, number] => [
+    interpSeries(midTimes, hiVals, tSec),
+    interpSeries(midTimes, midVals, tSec),
+    interpSeries(midTimes, loVals, tSec),
+  ];
+
+  const [rHi, gHi, bHi] = hexToRgb(palette.layerHi);
+  const [rMid, gMid, bMid] = hexToRgb(palette.layerMid);
+  const [rLo, gLo, bLo] = hexToRgb(palette.layerLo);
+
+  // Per-column vertical gradient: at each stop the three lanes blend by
+  // their falloff weight x coverage, so cloud reads as one smooth mass
+  // instead of three hard stripes. Kept inside [y0, y1]; no bleed outside.
+  const step = 2;
+  const x0px = Math.ceil(X(model.hours[0].time));
+  const x1px = Math.floor(X(model.hours[model.hours.length - 1].time));
+  for (let x = x0px; x <= x1px; x += step) {
+    const tSec = tAtX(x);
+    const [cHi, cMid, cLow] = cov(tSec);
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    for (let s = 0; s <= 10; s++) {
+      const p = s / 10;
+      const wHi = Math.max(0, 1 - Math.abs(p - LANE_C[0]) / LANE_HW);
+      const wMid = Math.max(0, 1 - Math.abs(p - LANE_C[1]) / LANE_HW);
+      const wLow = Math.max(0, 1 - Math.abs(p - LANE_C[2]) / LANE_HW);
+      const sh = wHi * cHi;
+      const sm = wMid * cMid;
+      const sl = wLow * cLow;
+      const denom = sh + sm + sl || 1;
+      const r = (sh * rHi + sm * rMid + sl * rLo) / denom;
+      const gg = (sh * gHi + sm * gMid + sl * gLo) / denom;
+      const bb = (sh * bHi + sm * bMid + sl * bLo) / denom;
+      const a = clamp01((sh + sm + sl) / (wHi + wMid + wLow || 1) / 100) * 0.35 * fade(tSec);
+      g.addColorStop(p, `rgba(${r | 0},${gg | 0},${bb | 0},${a.toFixed(3)})`);
     }
-    if (key === "mid") return hr.cloudCover;
-    return undefined;
-  };
-  const xs = model.hours.map((h) => X(h.time));
-  for (const zone of zones) {
-    for (let i = 0; i < model.hours.length; i++) {
-      const c = coverAt(zone.key, model.hours[i]);
-      if (c === undefined || c < 1) continue;
-      const x0 = i > 0 ? (xs[i - 1] + xs[i]) / 2 : xs[i];
-      const x1 = i < xs.length - 1 ? (xs[i] + xs[i + 1]) / 2 : xs[i] + 1;
-      ctx.globalAlpha = clamp01(c / 100) * 0.5 * fade(model.hours[i].time);
-      ctx.fillStyle = zone.color;
-      ctx.fillRect(x0, zone.y0, Math.max(1, x1 - x0), zone.y1 - zone.y0);
-    }
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y0, step, depth);
   }
   ctx.globalAlpha = 1;
 
@@ -869,18 +977,6 @@ function drawCloud(
   }
   ctx.globalAlpha = 1;
 }
-function nearestIndex(list: number[], t: number): number {
-  if (list.length === 0) return -1;
-  let lo = 0;
-  let hi = list.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (list[mid] <= t) lo = mid;
-    else hi = mid;
-  }
-  return Math.abs(list[lo] - t) <= Math.abs(list[hi] - t) ? lo : hi;
-}
-
 // --- axis -----------------------------------------------------------------
 
 function drawAxis(
@@ -893,8 +989,8 @@ function drawAxis(
   right: number,
 ) {
   // Day labels, centered in each day's span, at top and bottom. When the
-  // span is narrow the label rotates so it still fits and stays associated
-  // with its day.
+  // span is narrow the label tilts near-vertical so it still fits and stays
+  // associated with its day, clear of the hour row below it.
   ctx.font = `600 12px ${UI_FONT}`;
   ctx.fillStyle = palette.fg;
   ctx.textAlign = "center";
@@ -903,12 +999,12 @@ function drawAxis(
       const x0 = Math.max(gutter, X(g.startSec));
       const x1 = Math.min(right, X(g.endSec));
       const w = x1 - x0;
-      if (w < 18) continue;
+      if (w < 14) continue;
       const cx = (x0 + x1) / 2;
-      if (w < 48) {
+      if (w < 54) {
         ctx.save();
-        ctx.translate(cx, y + dir * 8);
-        ctx.rotate(-0.6);
+        ctx.translate(cx, y + dir * 4);
+        ctx.rotate(-1.4);
         ctx.textBaseline = "middle";
         ctx.fillText(g.label, 0, 0);
         ctx.restore();
@@ -921,27 +1017,31 @@ function drawAxis(
   drawDayRow(L.topDayY, -1);
   drawDayRow(L.bottomDayY, 1);
 
-  // Hour labels at nice round hours only. The step degrades as the axis
-  // compresses: every hour, then even hours, then 0/3/6/9..., then
-  // 0/6/12/18, then 0/12, then only midnight.
-  const minSpacing = (() => {
-    let s = Infinity;
-    for (let i = 1; i < model.hours.length; i++) {
-      s = Math.min(s, X(model.hours[i].time) - X(model.hours[i - 1].time));
-    }
-    return s;
-  })();
-  const step =
-    minSpacing >= 52 ? 1 : minSpacing >= 32 ? 2 : minSpacing >= 24 ? 3 : minSpacing >= 14 ? 6 : minSpacing >= 8 ? 12 : 24;
+  // Hour labels at nice round hours. The step is chosen from the MEDIAN
+  // hour spacing (the typical density) rather than the global minimum,
+  // which sits at the most-warped far edge and would otherwise collapse to
+  // midnight-only. A greedy filter then drops any label that would crowd
+  // the previous one in the same row.
+  const spacings: number[] = [];
+  for (let i = 1; i < model.hours.length; i++) {
+    spacings.push(X(model.hours[i].time) - X(model.hours[i - 1].time));
+  }
+  spacings.sort((a, b) => a - b);
+  const med = spacings[Math.floor(spacings.length / 2)] ?? Infinity;
+  const step = med >= 44 ? 1 : med >= 26 ? 2 : med >= 18 ? 3 : med >= 11 ? 6 : med >= 7 ? 12 : 24;
   const hourOk = (tSec: number) => localHour(model.timezone, tSec) % step === 0;
 
   const drawHourRow = (y: number, dir: 1 | -1) => {
     ctx.font = `11px ${UI_FONT}`;
+    ctx.textAlign = "center";
     ctx.textBaseline = dir > 0 ? "top" : "bottom";
+    let last = -Infinity;
     for (const hr of model.hours) {
       if (!hourOk(hr.time)) continue;
       const x = X(hr.time);
-      if (x < gutter + 4 || x > right - 4) continue;
+      if (x < gutter + 2 || x > right - 2) continue;
+      if (x - last < 30) continue;
+      last = x;
       ctx.strokeStyle = palette.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -949,7 +1049,6 @@ function drawAxis(
       ctx.lineTo(x, y - dir * 6);
       ctx.stroke();
       ctx.fillStyle = palette.sub;
-      ctx.textAlign = "center";
       ctx.fillText(formatHour(model.timezone, hr.time), x, y);
     }
   };
@@ -974,6 +1073,46 @@ function drawAxis(
       ctx.stroke();
     }
   }
+}
+
+/** Faint vertical lines at each hour that is actually labelled, but only for
+ *  the current day, so the near-now region has a soft hourly grid behind it. */
+function drawCurrentDayHours(
+  ctx: Ctx,
+  palette: Palette,
+  model: Prepared,
+  view: ViewOptions,
+  X: (t: number) => number,
+  L: Layout,
+  gutter: number,
+  right: number,
+) {
+  const now = view.nowSec;
+  const today = model.dayGroups.find((g) => g.startSec <= now && now < g.endSec);
+  if (!today) return;
+  const spacings: number[] = [];
+  for (let i = 1; i < model.hours.length; i++) {
+    spacings.push(X(model.hours[i].time) - X(model.hours[i - 1].time));
+  }
+  spacings.sort((a, b) => a - b);
+  const med = spacings[Math.floor(spacings.length / 2)] ?? Infinity;
+  const step = med >= 44 ? 1 : med >= 26 ? 2 : med >= 18 ? 3 : med >= 11 ? 6 : med >= 7 ? 12 : 24;
+  ctx.strokeStyle = palette.grid;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.5;
+  ctx.setLineDash([2, 4]);
+  for (const h of model.hours) {
+    if (h.time < today.startSec || h.time >= today.endSec) continue;
+    if (localHour(model.timezone, h.time) % step !== 0) continue;
+    const x = X(h.time);
+    if (x < gutter || x > right) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, L.bandsTop);
+    ctx.lineTo(x, L.bandsBottom);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
 }
 
 function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bottom: number, labelY: number) {

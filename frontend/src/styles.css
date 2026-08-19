@@ -188,10 +188,11 @@ button.icon-btn {
    no rounded pill backgrounds. Labels are small-caps; values tabular. */
 .data {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: baseline;
   margin-left: auto;
-  overflow: hidden;
+  max-width: 62%;
+  row-gap: 3px;
 }
 
 .datum {
@@ -250,6 +251,8 @@ button.icon-btn {
   font: 600 10px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   letter-spacing: 0.06em;
   writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  transform-origin: center;
   text-align: center;
   cursor: help;
   white-space: nowrap;
@@ -454,7 +457,9 @@ footer .warn {
 }
 
 .timeline-wrap.compact {
-  min-height: 300px;
+  flex: 0 0 auto;
+  min-height: 0;
+  height: clamp(360px, 52vh, 560px);
 }
 
 .model-blend {
@@ -491,11 +496,12 @@ footer .warn {
   min-height: 100vh;
 }
 
-/* compact mode: the whole UI centers as one block so the header and
-   footer sit next to the chart, not pinned to screen edges. */
+/* compact mode: the timeline no longer grows to fill the viewport, so the
+   header and footer sit just above and below the chart and the whole stack
+   centers vertically instead of pinning to the screen edges. */
 #root.compact {
   justify-content: center;
-  max-width: 1100px;
+  max-width: 1180px;
   margin: 0 auto;
 }
 

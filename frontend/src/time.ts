@@ -20,13 +20,16 @@ export function formatClock(tz: string, tSec: number): string {
   );
 }
 export function formatHour(tz: string, tSec: number): string {
-  return formatter(tz, { hour: "2-digit", hourCycle: "h23" }).format(new Date(tSec * 1000));
+  // "numeric" still renders "00" at midnight in most ICU builds, so strip the
+  // leading zero explicitly: the axis shows 0, 3, 6, ... 23, never 00.
+  return String(localHour(tz, tSec));
 }
 
 /** Local hour (0-23) of tSec in the given timezone. */
 export function localHour(tz: string, tSec: number): number {
-  return Number(formatter(tz, { hour: "2-digit", hourCycle: "h23" }).format(new Date(tSec * 1000)));
+  return Number(formatter(tz, { hour: "numeric", hourCycle: "h23" }).format(new Date(tSec * 1000)));
 }
+
 /** Full label used in tooltips: "Sat 23 Aug, 15:00". */
 export function formatFull(tz: string, tSec: number): string {
   return formatter(tz, {
