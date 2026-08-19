@@ -50,6 +50,7 @@ body {
 header {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
@@ -187,9 +188,10 @@ button.icon-btn {
    no rounded pill backgrounds. Labels are small-caps; values tabular. */
 .data {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   margin-left: auto;
+  overflow: hidden;
 }
 
 .datum {
@@ -239,16 +241,15 @@ button.icon-btn {
   position: absolute;
   left: 0;
   z-index: 6;
-  width: 14px;
+  width: 12px;
   padding: 0;
   margin: 0;
   border: 0;
   background: transparent;
   color: var(--sub);
   font: 600 10px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
   writing-mode: vertical-rl;
-  text-orientation: upright;
   text-align: center;
   cursor: help;
   white-space: nowrap;
@@ -478,7 +479,6 @@ footer .warn {
   justify-content: flex-start;
   white-space: nowrap;
 }
-
 /* focus mode keeps the current-weather strip; only the search bar,
    alerts, and footer hide. */
 #root.focus header,
@@ -489,6 +489,33 @@ footer .warn {
 
 #root.focus .timeline-wrap {
   min-height: 100vh;
+}
+
+/* compact mode: the whole UI centers as one block so the header and
+   footer sit next to the chart, not pinned to screen edges. */
+#root.compact {
+  justify-content: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* sun strip: sunrise/sunset times inline */
+.sun-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px;
+  color: var(--sub);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sun-strip .k {
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+.sun-strip .v {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {

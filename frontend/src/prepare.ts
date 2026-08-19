@@ -30,6 +30,8 @@ export interface Domains {
   tempHi: number;
   windMax: number;
   precipMax: number;
+  /** Max UV index across all hours, used so the peak fills the band. */
+  uvMax: number;
 }
 
 export interface Prepared {
@@ -108,6 +110,7 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
   let tempHi = -Infinity;
   let windMax = 0;
   let precipMax = 0;
+  let uvMax = 0;
   const widen = (v: number | undefined, lo: boolean) => {
     if (v === undefined || Number.isNaN(v)) return;
     if (lo) tempLo = Math.min(tempLo, v);
@@ -120,6 +123,7 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     widen(h.apparentTemperature, false);
     windMax = Math.max(windMax, h.windGust ?? 0, h.windSpeed ?? 0);
     precipMax = Math.max(precipMax, h.precipIntensity ?? 0);
+    if (h.uvIndex !== undefined) uvMax = Math.max(uvMax, h.uvIndex);
   }
   for (const d of days) {
     widen(d.temperatureHigh ?? d.temperatureMax, false);
@@ -152,6 +156,7 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
       // sqrt display scale: the domain only sets the bar at which a value
       // saturates visually.
       precipMax: Math.max(precipMax, 2.5),
+      uvMax: Math.max(uvMax + 1, 3),
     },
     currently: payload.currently,
     summaryMinutely: payload.minutely?.summary,

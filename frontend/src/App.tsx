@@ -1,13 +1,27 @@
-import { Show } from "solid-js";
+import { createEffect, onCleanup, onMount, Show } from "solid-js";
 
 import { Alerts } from "./components/Alerts";
-import { CurrentStrip } from "./components/CurrentStrip";
+import { CurrentStrip, SunStrip } from "./components/CurrentStrip";
 import { SearchBar } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Timeline } from "./components/Timeline";
-import { errorMsg, location, model, stale, status } from "./state";
+import { errorMsg, location, model, setZen, stale, settings, status, zen } from "./state";
 
 export function App() {
+  createEffect(() => {
+    document.getElementById("root")?.classList.toggle("focus", zen());
+    document.getElementById("root")?.classList.toggle("compact", settings().layout === "compact");
+  });
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "f" && e.key !== "F") return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      setZen(!zen());
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
   return (
     <>
       <header>
@@ -21,6 +35,7 @@ export function App() {
       </header>
       <Alerts />
       <CurrentStrip />
+      <SunStrip />
       <Timeline />
       <footer>
         <Show when={model()} keyed>

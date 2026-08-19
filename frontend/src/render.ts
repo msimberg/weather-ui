@@ -12,7 +12,7 @@
 
 import { type IconStyle } from "./icons";
 import { formatTemp } from "./format";
-import { formatHour } from "./time";
+import { formatHour, localHour } from "./time";
 import { clamp01, MIN_PAST_ALPHA, pastFade, type TimeAxis } from "./transform";
 import type { Prepared } from "./prepare";
 import type { HourPoint, Units } from "./types";
@@ -130,6 +130,15 @@ const BAND_FRAC: Record<string, number> = {
   temp: 0.4,
 };
 
+// In compact mode the cloud band gets more room (it should feel like
+// horizontally-spread cloud) and the wind band less.
+const BAND_FRAC_COMPACT: Record<string, number> = {
+  precip: 0.12,
+  cloud: 0.38,
+  wind: 0.13,
+  temp: 0.37,
+};
+
 const TOP_PAD = 4;
 const TOP_AXIS_H = 20;
 const BOTTOM_AXIS_H = 26;
@@ -169,10 +178,11 @@ export function bandLayout(cssW: number, cssH: number, layout: "full" | "compact
   }
   const bands: Record<string, BandRect> = {};
   let y = top;
-  const totalFrac = order.reduce((a, n) => a + (BAND_FRAC[n] ?? 0.2), 0);
+  const fracs = layout === "compact" ? BAND_FRAC_COMPACT : BAND_FRAC;
+  const totalFrac = order.reduce((a, n) => a + (fracs[n] ?? 0.2), 0);
   for (let i = 0; i < order.length; i++) {
     const name = order[i];
-    const frac = (BAND_FRAC[name] ?? 0.2) / totalFrac;
+    const frac = (fracs[name] ?? 0.2) / totalFrac;
     const bh = h * frac;
     const gap = i < order.length - 1 ? BAND_GAP : 0;
     bands[name] = { y0: y, y1: y + bh - gap };
@@ -292,17 +302,6 @@ function lineFade(dtSec: number): number {
   return 1 - (0.65 * (a - LINE_NEAR)) / (LINE_FAR - LINE_NEAR);
 }
 
-/** Daily envelope alpha: hidden near now, growing to a light band far away.
- * Window-width-independent, so it never covers "now" on narrow windows and
- * is always present in the far field on wide ones. */
-const ENV_NEAR = 18 * 3600;
-const ENV_FAR = 54 * 3600;
-function envFade(dtSec: number): number {
-  const a = Math.abs(dtSec);
-  if (a <= ENV_NEAR) return 0;
-  if (a >= ENV_FAR) return 1;
-  return (a - ENV_NEAR) / (ENV_FAR - ENV_NEAR);
-}
 
 export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view: ViewOptions): void {
   const { axis, palette, hoverSec } = view;
@@ -555,55 +554,31 @@ function drawTemp(
   const depth = band.y1 - band.y0 - 8;
   const y = (v: number): number => band.y1 - 4 - ((v - tempLo) / (tempHi - tempLo)) * depth;
 
-  // Smooth min/max envelope, alpha by time distance (never near now).
-  const days: { mid: number; hi: number; lo: number; f: number }[] = [];
+  // Faint temperature band everywhere, no min/max line. A single smooth
+  // region through daily extreme midpoints, kept very light so the hourly
+  // line reads on top of it everywhere.
+  const days: { mid: number; hi: number; lo: number }[] = [];
   for (const g of model.dayGroups) {
     const hi = g.day.temperatureHigh ?? g.day.temperatureMax;
     const lo = g.day.temperatureLow ?? g.day.temperatureMin;
     if (hi === undefined || lo === undefined) continue;
-    const mid = (g.startSec + g.endSec) / 2;
-    days.push({ mid, hi, lo, f: envFade(mid - view.nowSec) * fade(mid) });
+    days.push({ mid: (g.startSec + g.endSec) / 2, hi, lo });
   }
-  let run: typeof days = [];
-  const flushEnvelope = () => {
-    if (run.length < 1) {
-      run = [];
-      return;
-    }
-    const topPts = run.map((d) => ({ x: clampX(X(d.mid), gutter, right), y: y(d.hi) }));
-    const botPts = run.map((d) => ({ x: clampX(X(d.mid), gutter, right), y: y(d.lo) }));
-    const alpha = Math.min(0.22, (run.reduce((a, d) => a + d.f, 0) / run.length) * 0.22);
-    if (alpha > 0.01 && topPts.length >= 2 && topPts[topPts.length - 1].x - topPts[0].x > 3) {
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = palette.temp;
-      ctx.beginPath();
-      ctx.moveTo(topPts[0].x, topPts[0].y);
-      traceSmooth(ctx, topPts, 0, topPts.length, false);
-      ctx.lineTo(botPts[botPts.length - 1].x, botPts[botPts.length - 1].y);
-      const rev = botPts.slice().reverse();
-      traceSmooth(ctx, rev, 0, rev.length, false);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = Math.min(1, alpha * 2.2);
-      ctx.strokeStyle = palette.temp;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      traceSmooth(ctx, topPts, 0, topPts.length);
-      ctx.stroke();
-      ctx.beginPath();
-      traceSmooth(ctx, botPts, 0, botPts.length);
-      ctx.stroke();
-    }
-    run = [];
-  };
-  for (const d of days) {
-    if (d.f < 0.01) {
-      flushEnvelope();
-      continue;
-    }
-    run.push(d);
+  if (days.length >= 2) {
+    const topPts = days.map((d) => ({ x: clampX(X(d.mid), gutter, right), y: y(d.hi) }));
+    const botPts = days.map((d) => ({ x: clampX(X(d.mid), gutter, right), y: y(d.lo) }));
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = palette.temp;
+    ctx.beginPath();
+    ctx.moveTo(topPts[0].x, topPts[0].y);
+    traceSmooth(ctx, topPts, 0, topPts.length, false);
+    ctx.lineTo(botPts[botPts.length - 1].x, botPts[botPts.length - 1].y);
+    const rev = botPts.slice().reverse();
+    traceSmooth(ctx, rev, 0, rev.length, false);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
-  flushEnvelope();
 
   // Reference lines at 0 and 20 (32 and 68 in US), faint, when in range.
   ctx.font = `10px ${UI_FONT}`;
@@ -638,7 +613,8 @@ function drawTemp(
   strokeWeighted(ctx, appPts, palette.appTemp, 1.4, [5, 4]);
   strokeWeighted(ctx, linePts, palette.temp, 2.4);
 
-  // Daily high/low dots, gated only by space (not by the envelope).
+  // Daily high/low dots and labels, gated only by space. The high label
+  // sits at the high point, the low label at the low point (never combined).
   labels.reset();
   ctx.font = `11px ${UI_FONT}`;
   ctx.fillStyle = palette.hiLo;
@@ -651,8 +627,8 @@ function drawTemp(
     const xh = clampX(X(ht), gutter, right);
     const xl = clampX(X(lt), gutter, right);
     const f = Math.min(1, fade((g.startSec + g.endSec) / 2) + 0.15);
-    const showDot = Math.abs(X(g.endSec) - X(g.startSec)) > 6;
-    if (showDot) {
+    const dayW = Math.abs(X(g.endSec) - X(g.startSec));
+    if (dayW > 6) {
       ctx.globalAlpha = f;
       ctx.beginPath();
       ctx.arc(xh, y(hi), 2.4, 0, Math.PI * 2);
@@ -661,25 +637,16 @@ function drawTemp(
       ctx.arc(xl, y(lo), 2.4, 0, Math.PI * 2);
       ctx.fill();
     }
-    const showLabel = Math.abs(X(g.endSec) - X(g.startSec)) > 34;
-    if (showLabel) {
+    if (dayW > 34) {
       ctx.globalAlpha = f;
       ctx.textAlign = "center";
-      if (y(hi) - y(lo) < 14) {
-        // Squeezed: stack both on one side to avoid overlap.
-        if (labels.tryPlace(xh, 14)) {
-          ctx.textBaseline = "bottom";
-          ctx.fillText(`${formatTemp(hi)}/${formatTemp(lo)}`, xh, Math.min(y(hi), y(lo)) - 3);
-        }
-      } else {
-        if (labels.tryPlace(xh, 14)) {
-          ctx.textBaseline = "bottom";
-          ctx.fillText(formatTemp(hi), xh, y(hi) - 3);
-        }
-        if (labels.tryPlace(xl, 14)) {
-          ctx.textBaseline = "top";
-          ctx.fillText(formatTemp(lo), xl, y(lo) + 3);
-        }
+      if (labels.tryPlace(xh, 14)) {
+        ctx.textBaseline = "bottom";
+        ctx.fillText(formatTemp(hi), xh, y(hi) - 3);
+      }
+      if (labels.tryPlace(xl, 14)) {
+        ctx.textBaseline = "top";
+        ctx.fillText(formatTemp(lo), xl, y(lo) + 3);
       }
     }
   }
@@ -703,49 +670,59 @@ function toKnots(speed: number, units: Units): number {
   }
 }
 
-function drawBarb(ctx: Ctx, x: number, y: number, bearingDeg: number, knots: number, color: string) {
+/** WMO station-model wind barb with a bg-colored halo so it reads against
+ * the speed line. Shaft is 18px; feathers at the tail: pennant 50 kt,
+ * long barb 10 kt, short barb 5 kt. */
+function drawBarb(ctx: Ctx, x: number, y: number, bearingDeg: number, knots: number, color: string, halo: string) {
+  const draw = (lw: number, stroke: string, fill: string | null) => {
+    ctx.strokeStyle = stroke;
+    ctx.fillStyle = fill ?? stroke;
+    ctx.lineWidth = lw;
+    ctx.lineCap = "round";
+    const shaftLen = 18;
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    ctx.lineTo(0, 6 - shaftLen);
+    ctx.stroke();
+    let kt = knots;
+    let ty = 6 - shaftLen;
+    while (kt >= 47.5) {
+      ctx.beginPath();
+      ctx.moveTo(0, ty);
+      ctx.lineTo(-7, ty + 5);
+      ctx.lineTo(0, ty + 10);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      ctx.stroke();
+      ty += 3;
+      kt -= 50;
+    }
+    while (kt >= 10) {
+      ctx.beginPath();
+      ctx.moveTo(0, ty);
+      ctx.lineTo(-6.5, ty + 5);
+      ctx.stroke();
+      ty += 4.5;
+      kt -= 10;
+    }
+    if (kt >= 5) {
+      ctx.beginPath();
+      ctx.moveTo(0, ty);
+      ctx.lineTo(-3.5, ty + 2.7);
+      ctx.stroke();
+    } else if (knots < 2.5) {
+      ctx.beginPath();
+      ctx.arc(0, -2, 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  };
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((bearingDeg * Math.PI) / 180);
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineWidth = 1.3;
-  ctx.lineCap = "round";
-  const shaftLen = 13;
-  ctx.beginPath();
-  ctx.moveTo(0, 5);
-  ctx.lineTo(0, 5 - shaftLen);
-  ctx.stroke();
-  let kt = knots;
-  let ty = 5 - shaftLen;
-  while (kt >= 47.5) {
-    ctx.beginPath();
-    ctx.moveTo(0, ty);
-    ctx.lineTo(-6.5, ty + 4);
-    ctx.lineTo(0, ty + 8);
-    ctx.closePath();
-    ctx.fill();
-    ty += 2.5;
-    kt -= 50;
-  }
-  while (kt >= 10) {
-    ctx.beginPath();
-    ctx.moveTo(0, ty);
-    ctx.lineTo(-6, ty + 4.6);
-    ctx.stroke();
-    ty += 4;
-    kt -= 10;
-  }
-  if (kt >= 5) {
-    ctx.beginPath();
-    ctx.moveTo(0, ty);
-    ctx.lineTo(-3, ty + 2.3);
-    ctx.stroke();
-  } else if (knots < 2.5) {
-    ctx.beginPath();
-    ctx.arc(0, -2, 2, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  // Halo: wider, bg-colored stroke under everything.
+  draw(4, halo, null);
+  // Barb: the ink color, on top.
+  draw(2, color, color);
   ctx.restore();
 }
 
@@ -783,7 +760,7 @@ function drawWind(
     if (x < gutter + 2) continue;
     if (!labels.tryPlace(x, SP / 2)) continue;
     ctx.globalAlpha = Math.min(1, fade(hr.time) * 0.95 + 0.1);
-    drawBarb(ctx, x, y(hr.windSpeed), hr.windBearing, toKnots(hr.windSpeed, view.units), palette.wind);
+    drawBarb(ctx, x, y(hr.windSpeed), hr.windBearing, toKnots(hr.windSpeed, view.units), palette.wind, palette.bg);
   }
   ctx.globalAlpha = 1;
 }
@@ -800,77 +777,95 @@ function drawCloud(
   labels: GreedyLabels,
 ) {
   const { palette } = view;
-  const depth = band.y1 - band.y0 - 8;
-  const top = band.y0 + 4;
-  // Three altitude lanes: high at the top, mid in the middle, low at the
-  // bottom, so "denser" literally reads as higher cloud.
-  const lanes = [
-    { y: top + depth * 0.16, key: "high" as const, color: palette.layerHi },
-    { y: top + depth * 0.5, key: "mid" as const, color: palette.layerMid },
-    { y: top + depth * 0.84, key: "low" as const, color: palette.layerLo },
+  const bg = palette.bg;
+  const depth = band.y1 - band.y0;
+  // Three contiguous altitude zones (no gaps): high at the top, mid in the
+  // middle, low at the bottom. Each is a row of rectangles so they tile
+  // cleanly without the overlap darkening the ellipses produced.
+  const zoneH = depth / 3;
+  const zones = [
+    { y0: band.y0, y1: band.y0 + zoneH, key: "high" as const, color: palette.layerHi },
+    { y0: band.y0 + zoneH, y1: band.y0 + 2 * zoneH, key: "mid" as const, color: palette.layerMid },
+    { y0: band.y0 + 2 * zoneH, y1: band.y1, key: "low" as const, color: palette.layerLo },
   ];
   const layers = model.cloudLayers;
-  const ry = depth * 0.13;
-
-  const drawLane = (key: "low" | "mid" | "high", ly: number, color: string) => {
-    const vals = layers ? layers[key] : undefined;
-    for (let i = 0; i < model.hours.length; i++) {
-      const hr = model.hours[i];
-      let cover: number | undefined;
-      if (vals && layers) {
-        const li = nearestIndex(layers.time, hr.time);
-        cover = li >= 0 ? vals[li] : undefined;
-      } else if (key === "mid") {
-        cover = hr.cloudCover;
-      }
-      if (cover === undefined || cover < 3) continue;
-      const x = X(hr.time);
-      const prev = i > 0 ? X(model.hours[i - 1].time) : x - 8;
-      const next = i < model.hours.length - 1 ? X(model.hours[i + 1].time) : x + 8;
-      const rx = Math.max(2, Math.min((next - prev) / 2, 26) * (0.55 + cover / 100));
-      ctx.globalAlpha = clamp01(cover / 100) * 0.5 * fade(hr.time);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.ellipse(x, ly, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
+  const coverAt = (key: "low" | "mid" | "high", hr: HourPoint): number | undefined => {
+    if (layers && layers[key]) {
+      const li = nearestIndex(layers.time, hr.time);
+      return li >= 0 ? layers[key][li] : undefined;
     }
+    if (key === "mid") return hr.cloudCover;
+    return undefined;
   };
-  for (const lane of lanes) drawLane(lane.key, lane.y, lane.color);
+  const xs = model.hours.map((h) => X(h.time));
+  for (const zone of zones) {
+    for (let i = 0; i < model.hours.length; i++) {
+      const c = coverAt(zone.key, model.hours[i]);
+      if (c === undefined || c < 1) continue;
+      const x0 = i > 0 ? (xs[i - 1] + xs[i]) / 2 : xs[i];
+      const x1 = i < xs.length - 1 ? (xs[i] + xs[i + 1]) / 2 : xs[i] + 1;
+      ctx.globalAlpha = clamp01(c / 100) * 0.5 * fade(model.hours[i].time);
+      ctx.fillStyle = zone.color;
+      ctx.fillRect(x0, zone.y0, Math.max(1, x1 - x0), zone.y1 - zone.y0);
+    }
+  }
   ctx.globalAlpha = 1;
 
-  // UV index as a discrete step function (it is a per-hour integer).
-  const uvPts: { x: number; y: number; t: number }[] = [];
+  // UV index as a discrete step function, scaled so the data peak fills the
+  // band. A bg-colored halo is stroked under the line so it stays visible
+  // against both white and black clouds.
+  const uvMax = model.domains.uvMax;
+  const uvY = (v: number): number => bandY(band, v / uvMax);
+  const uvPts: { x: number; y: number; v: number; t: number }[] = [];
   for (const hr of model.hours) {
     if (hr.uvIndex === undefined) continue;
-    uvPts.push({ x: X(hr.time), y: bandY(band, hr.uvIndex / 11), t: hr.time });
+    uvPts.push({ x: X(hr.time), y: uvY(hr.uvIndex), v: hr.uvIndex, t: hr.time });
   }
-  if (uvPts.length > 1) {
-    ctx.strokeStyle = palette.uv;
-    ctx.lineWidth = 1.4;
-    ctx.lineJoin = "miter";
+  const path = () => {
+    if (uvPts.length < 2) return;
     ctx.beginPath();
-    ctx.globalAlpha = 0.9 * fade(uvPts[0].t);
     ctx.moveTo(uvPts[0].x, uvPts[0].y);
     for (let i = 1; i < uvPts.length; i++) {
-      const a = 0.9 * fade(uvPts[i].t);
-      ctx.globalAlpha = a;
       ctx.lineTo(uvPts[i].x, uvPts[i - 1].y);
       ctx.lineTo(uvPts[i].x, uvPts[i].y);
     }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
+  };
+  // Halo: a wider, bg-colored stroke under the line.
+  ctx.strokeStyle = bg;
+  ctx.lineWidth = 4;
+  ctx.lineJoin = "round";
+  ctx.globalAlpha = 0.85;
+  path();
+  ctx.stroke();
+  // Line: the UV ink, on top.
+  ctx.strokeStyle = palette.uv;
+  ctx.lineWidth = 1.8;
+  ctx.globalAlpha = 0.95;
+  path();
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
-  // Sparse UV value labels where readable.
+  // One UV value label per constant-value run, placed in the horizontal
+  // middle of the run (so it never sits on a step edge) and just above the
+  // line, so it never overlaps the line itself.
   labels.reset();
   ctx.font = `10px ${UI_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  for (const hr of model.hours) {
-    if (hr.uvIndex === undefined || hr.uvIndex < 3) continue;
-    if (!labels.tryPlace(X(hr.time), 10)) continue;
-    ctx.fillStyle = palette.uv;
-    ctx.fillText(String(Math.round(hr.uvIndex)), X(hr.time), bandY(band, hr.uvIndex / 11) - 2);
+  let i = 0;
+  while (i < uvPts.length) {
+    let j = i + 1;
+    while (j < uvPts.length && uvPts[j].v === uvPts[i].v) j++;
+    const cx = (uvPts[i].x + uvPts[j - 1].x) / 2;
+    const v = uvPts[i].v;
+    if (v >= 3 && labels.tryPlace(cx, 8)) {
+      ctx.globalAlpha = fade(uvPts[i].t);
+      ctx.fillStyle = bg;
+      ctx.fillText(String(Math.round(v)), cx, uvY(v) - 2);
+      ctx.fillStyle = palette.uv;
+      ctx.fillText(String(Math.round(v)), cx, uvY(v) - 2);
+    }
+    i = j;
   }
   ctx.globalAlpha = 1;
 }
@@ -897,42 +892,56 @@ function drawAxis(
   gutter: number,
   right: number,
 ) {
-  // Day labels, centered in each day's span, at top and bottom.
+  // Day labels, centered in each day's span, at top and bottom. When the
+  // span is narrow the label rotates so it still fits and stays associated
+  // with its day.
   ctx.font = `600 12px ${UI_FONT}`;
   ctx.fillStyle = palette.fg;
   ctx.textAlign = "center";
-  const drawDayRow = (y: number) => {
+  const drawDayRow = (y: number, dir: 1 | -1) => {
     for (const g of model.dayGroups) {
       const x0 = Math.max(gutter, X(g.startSec));
       const x1 = Math.min(right, X(g.endSec));
-      if (x1 - x0 < 40) continue;
-      ctx.fillText(g.label, (x0 + x1) / 2, y);
+      const w = x1 - x0;
+      if (w < 18) continue;
+      const cx = (x0 + x1) / 2;
+      if (w < 48) {
+        ctx.save();
+        ctx.translate(cx, y + dir * 8);
+        ctx.rotate(-0.6);
+        ctx.textBaseline = "middle";
+        ctx.fillText(g.label, 0, 0);
+        ctx.restore();
+      } else {
+        ctx.textBaseline = dir > 0 ? "top" : "bottom";
+        ctx.fillText(g.label, cx, y);
+      }
     }
   };
-  ctx.textBaseline = "bottom";
-  drawDayRow(L.topDayY);
-  ctx.textBaseline = "top";
-  drawDayRow(L.bottomDayY);
+  drawDayRow(L.topDayY, -1);
+  drawDayRow(L.bottomDayY, 1);
 
-  // Hour ticks + labels at top and bottom, decluttered by pixel spacing.
+  // Hour labels at nice round hours only. The step degrades as the axis
+  // compresses: every hour, then even hours, then 0/3/6/9..., then
+  // 0/6/12/18, then 0/12, then only midnight.
+  const minSpacing = (() => {
+    let s = Infinity;
+    for (let i = 1; i < model.hours.length; i++) {
+      s = Math.min(s, X(model.hours[i].time) - X(model.hours[i - 1].time));
+    }
+    return s;
+  })();
+  const step =
+    minSpacing >= 52 ? 1 : minSpacing >= 32 ? 2 : minSpacing >= 24 ? 3 : minSpacing >= 14 ? 6 : minSpacing >= 8 ? 12 : 24;
+  const hourOk = (tSec: number) => localHour(model.timezone, tSec) % step === 0;
+
   const drawHourRow = (y: number, dir: 1 | -1) => {
-    const taken: number[] = [];
     ctx.font = `11px ${UI_FONT}`;
     ctx.textBaseline = dir > 0 ? "top" : "bottom";
     for (const hr of model.hours) {
+      if (!hourOk(hr.time)) continue;
       const x = X(hr.time);
       if (x < gutter + 4 || x > right - 4) continue;
-      const text = formatHour(model.timezone, hr.time);
-      const hw = ctx.measureText(text).width / 2 + 5;
-      let ok = true;
-      for (const t of taken) {
-        if (Math.abs(t - x) < hw + 10) {
-          ok = false;
-          break;
-        }
-      }
-      if (!ok) continue;
-      taken.push(x);
       ctx.strokeStyle = palette.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -940,7 +949,8 @@ function drawAxis(
       ctx.lineTo(x, y - dir * 6);
       ctx.stroke();
       ctx.fillStyle = palette.sub;
-      ctx.fillText(text, x, y);
+      ctx.textAlign = "center";
+      ctx.fillText(formatHour(model.timezone, hr.time), x, y);
     }
   };
   drawHourRow(L.topHourY, -1);

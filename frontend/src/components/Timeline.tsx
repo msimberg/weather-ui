@@ -80,7 +80,7 @@ export function Timeline() {
     const s = settings();
     const L = bandLayout(width(), height(), s.layout, s.bandOrder);
     return s.bandOrder
-      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name] }))
+      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name], gutter: L.gutter, titleW: L.titleW }))
       .filter((t) => t.rect && t.title);
   });
 
@@ -159,6 +159,7 @@ export function Timeline() {
             class="band-title"
             title={t.title}
             style={{
+              left: `${t.gutter - t.titleW - 2}px`,
               top: `${t.rect.y0 + 4}px`,
               height: `${Math.max(12, t.rect.y1 - t.rect.y0 - 8)}px`,
             }}

@@ -23,6 +23,10 @@ export function formatHour(tz: string, tSec: number): string {
   return formatter(tz, { hour: "2-digit", hourCycle: "h23" }).format(new Date(tSec * 1000));
 }
 
+/** Local hour (0-23) of tSec in the given timezone. */
+export function localHour(tz: string, tSec: number): number {
+  return Number(formatter(tz, { hour: "2-digit", hourCycle: "h23" }).format(new Date(tSec * 1000)));
+}
 /** Full label used in tooltips: "Sat 23 Aug, 15:00". */
 export function formatFull(tz: string, tSec: number): string {
   return formatter(tz, {

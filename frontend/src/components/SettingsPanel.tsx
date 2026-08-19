@@ -178,6 +178,27 @@ export function SettingsPanel() {
               ))}
             </select>
           </label>
+          <label>
+            Auto-refresh
+            <input
+              type="checkbox"
+              checked={settings().autoRefresh}
+              onChange={(e) => setSettings({ autoRefresh: e.currentTarget.checked })}
+            />
+          </label>
+          <label>
+            Refresh interval (min)
+            <input
+              type="range"
+              min="1"
+              max="60"
+              step="1"
+              value={settings().refreshInterval}
+              disabled={!settings().autoRefresh}
+              onInput={(e) => setSettings({ refreshInterval: Number(e.currentTarget.value) })}
+            />
+            <output>{settings().refreshInterval}</output>
+          </label>
           <fieldset class="band-order">
             <legend>Band order (top to bottom)</legend>
             <For each={settings().bandOrder}>

@@ -10,6 +10,7 @@ import {
   windUnit,
 } from "../format";
 import { model, nowTick, resolvedTheme, settings } from "../state";
+import { formatClock } from "../time";
 import type { HourPoint, Units } from "../types";
 
 const currentIconStyle = (): IconStyle =>
@@ -123,4 +124,24 @@ function chipList(cur: HourPoint | undefined, u: Units): Chip[] {
   push("cape", cur.cape !== undefined ? cur.cape.toFixed(0) : undefined, "Convective available potential energy (J/kg)");
   push("smoke", cur.smoke !== undefined ? cur.smoke.toFixed(1) : undefined, "Near-surface smoke (ug/m^3)");
   return out;
+}
+
+/** Sunrise/sunset for the current day, shown as labeled times. */
+export function SunStrip() {
+  return (
+    <Show when={model()} keyed>
+      {(m) => {
+        const today = m.dayGroups.find((g) => g.label === "Today")?.day ?? m.dayGroups[0]?.day;
+        if (!today?.sunriseTime || !today?.sunsetTime) return null;
+        return (
+          <div class="sun-strip">
+            <span class="k">sunrise</span>
+            <span class="v">{formatClock(m.timezone, today.sunriseTime)}</span>
+            <span class="k">sunset</span>
+            <span class="v">{formatClock(m.timezone, today.sunsetTime)}</span>
+          </div>
+        );
+      }}
+    </Show>
+  );
 }

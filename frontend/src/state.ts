@@ -27,6 +27,10 @@ export interface Settings {
   excludeModels: string[];
   /** Top-to-bottom order of the data bands. */
   bandOrder: string[];
+  /** Automatic background refresh while the tab is visible. */
+  autoRefresh: boolean;
+  /** Auto-refresh interval in minutes. */
+  refreshInterval: number;
   /** Pirate Weather include=aimodels (AIGFS/AIGEFS/ECMWF-AIFS join the blend). */
   aiModels: boolean;
   lang: string;
@@ -44,6 +48,8 @@ const DEFAULT_SETTINGS: Settings = {
   layout: "full",
   excludeModels: [],
   bandOrder: [...BAND_ORDER],
+  autoRefresh: false,
+  refreshInterval: 10,
   aiModels: false,
   lang: "en",
 };
@@ -232,10 +238,12 @@ createEffect(() => {
 
 setInterval(() => setNowTick(Math.floor(Date.now() / 1000)), 30_000);
 
-// Silent refresh after 9.5 idle minutes, only while visible.
+// Auto-refresh: at the configured interval while visible, only when enabled.
 setInterval(() => {
   if (document.hidden) return;
-  if (model() && Date.now() - lastFetchMs > 9.5 * 60_000) void refreshWeather();
-}, 60_000);
+  const s = settings();
+  if (!s.autoRefresh || !model()) return;
+  if (Date.now() - lastFetchMs > s.refreshInterval * 60_000) void refreshWeather();
+}, 30_000);
 
 preloadFromCache();
