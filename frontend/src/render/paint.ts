@@ -74,21 +74,33 @@ export function strokeWeighted(ctx: Ctx, pts: Pt[], style: string, width: number
 export interface GreedyLabels {
   reset(): void;
   tryPlace(x: number, halfWidth: number): boolean;
+  /** Read-only probe: would this label fit without taking the slot? Atomic
+   * placement of grouped markers (e.g. a day's H and L) checks fits() for
+   * every member first, then tryPlace()s them all, so the group is all or
+   * nothing. */
+  fits(x: number, halfWidth: number): boolean;
 }
 
 export function makeGreedyLabels(): GreedyLabels {
   const taken: { lo: number; hi: number }[] = [];
+  const overlap = (x: number, halfWidth: number): boolean => {
+    const lo = x - halfWidth;
+    const hi = x + halfWidth;
+    for (const t of taken) {
+      if (lo <= t.hi && hi >= t.lo) return true;
+    }
+    return false;
+  };
   return {
     reset() {
       taken.length = 0;
     },
-    tryPlace(x: number, halfWidth: number) {
-      const lo = x - halfWidth;
-      const hi = x + halfWidth;
-      for (const t of taken) {
-        if (lo <= t.hi && hi >= t.lo) return false;
-      }
-      taken.push({ lo, hi });
+    fits(x, halfWidth) {
+      return !overlap(x, halfWidth);
+    },
+    tryPlace(x, halfWidth) {
+      if (overlap(x, halfWidth)) return false;
+      taken.push({ lo: x - halfWidth, hi: x + halfWidth });
       return true;
     },
   };

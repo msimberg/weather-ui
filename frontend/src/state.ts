@@ -8,6 +8,8 @@ import type { CurrentLocation, Units, WeatherPayload } from "./types";
 
 export interface Settings {
   units: Units;
+  /** Forecast data provider; the backend translates both into one shape. */
+  provider: "openmeteo" | "pirateweather";
   theme: "auto" | "light" | "dark";
   /** How many days of history the axis shows; each costs one upstream call on a cold cache. */
   pastDays: number;
@@ -40,6 +42,7 @@ export interface Settings {
 
 const DEFAULT_SETTINGS: Settings = {
   units: "si",
+  provider: "openmeteo",
   theme: "auto",
   pastDays: 4,
   futureDays: 7,
@@ -107,6 +110,9 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
     out.compactHeightVh = 0.62;
   }
   out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
+  if (out.provider !== "openmeteo" && out.provider !== "pirateweather") {
+    out.provider = DEFAULT_SETTINGS.provider;
+  }
   return out;
 }
 
@@ -165,7 +171,7 @@ const CACHE_PREFIX = "wu.cache.";
 
 function cacheKey(loc: CurrentLocation, s: Settings): string {
   const models = `${s.excludeModels.slice().sort().join("-")}+${s.aiModels ? 1 : 0}`;
-  return `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}:${s.pastDays}:${s.units}:${s.lang}:${models}`;
+  return `${s.provider}:${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}:${s.pastDays}:${s.units}:${s.lang}:${models}`;
 }
 
 function loadCached(key: string): WeatherPayload | null {
@@ -218,6 +224,7 @@ export async function refreshWeather(): Promise<void> {
   try {
     const payload = await fetchWeather(
       loc,
+      s.provider,
       s.pastDays,
       s.units,
       s.lang,

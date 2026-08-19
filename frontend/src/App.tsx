@@ -55,7 +55,9 @@ export function App() {
                 </span>
               </Show>
               <span>
-                data: pirateweather.net (model output, past days from archives rather than station observations)
+                {settings().provider === "pirateweather"
+                  ? "data: pirateweather.net (model output, past days from archives rather than station observations)"
+                  : "data: open-meteo.com (CC BY 4.0; best-match national models, ICON-CH 1-2 km in Switzerland)"}
               </span>
             </>
           )}

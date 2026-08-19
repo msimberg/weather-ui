@@ -47,21 +47,18 @@ pub struct PirateClient {
 
 struct Inner {
     http: reqwest::Client,
-    key: String,
+    key: Option<String>,
     nominatim_base: String,
 }
 
 impl PirateClient {
-    pub fn new(key: String, nominatim_base: String, contact: Option<String>) -> PirateClient {
-        // Nominatim's usage policy requires an identifying user agent.
-        let ua = match contact {
-            Some(c) if !c.trim().is_empty() => {
-                format!("weather-ui/{} ({c})", env!("CARGO_PKG_VERSION"))
-            }
-            _ => format!("weather-ui/{}", env!("CARGO_PKG_VERSION")),
-        };
+    pub fn new(
+        key: Option<String>,
+        nominatim_base: String,
+        contact: Option<String>,
+    ) -> PirateClient {
         let http = reqwest::Client::builder()
-            .user_agent(ua)
+            .user_agent(Self::user_agent(contact.as_deref()))
             .timeout(Duration::from_secs(30))
             .build()
             .expect("reqwest client construction failed");
@@ -70,8 +67,32 @@ impl PirateClient {
         }
     }
 
+    /// User agent shared with the keyless Open-Meteo client.
+    pub fn user_agent(contact: Option<&str>) -> String {
+        match contact {
+            Some(c) if !c.trim().is_empty() => {
+                format!("weather-ui/{} ({c})", env!("CARGO_PKG_VERSION"))
+            }
+            _ => format!("weather-ui/{}", env!("CARGO_PKG_VERSION")),
+        }
+    }
+
+    pub fn has_key(&self) -> bool {
+        self.inner.key.is_some()
+    }
+
+    fn key(&self) -> Result<&str, UpstreamError> {
+        self.inner.key.as_deref().ok_or(UpstreamError::Network {
+            service: "pirate weather",
+            detail: "PIRATE_WEATHER_API_KEY is not configured".to_string(),
+        })
+    }
+
     fn redact(&self, text: String) -> String {
-        text.replace(&self.inner.key, "***")
+        match self.inner.key.as_deref() {
+            Some(k) if !k.is_empty() => text.replace(k, "***"),
+            _ => text,
+        }
     }
 
     async fn get_json(&self, service: &'static str, url: &str) -> Result<Value, UpstreamError> {
@@ -112,7 +133,7 @@ impl PirateClient {
         let mut url = format!(
             "{}/{}/{}?version=2&extend=hourly&icon=pirate&units={}&lang={}",
             FORECAST_BASE,
-            self.inner.key,
+            self.key()?,
             Self::coords(lat, lon),
             units,
             lang
@@ -155,7 +176,7 @@ impl PirateClient {
         let url = format!(
             "{}/{}/{},{}?version=2&units={}&lang={}",
             TIMEMACHINE_BASE,
-            self.inner.key,
+            self.key()?,
             Self::coords(lat, lon),
             unix_secs,
             units,
@@ -205,11 +226,20 @@ mod tests {
 
     #[test]
     fn error_display_never_contains_key() {
-        let client = PirateClient::new("secret-api-key".to_string(), String::new(), None);
+        let client = PirateClient::new(Some("secret-api-key".to_string()), String::new(), None);
         let raw = "request failed for https://api.pirateweather.net/forecast/secret-api-key/1,2"
             .to_string();
         let err = UpstreamError::Network { service: "svc", detail: client.redact(raw) };
         assert!(!err.to_string().contains("secret-api-key"));
+    }
+
+    #[test]
+    fn keyless_client_redacts_nothing() {
+        // No key configured: redact must be a no-op, not a panic.
+        let client = PirateClient::new(None, String::new(), None);
+        let raw = "plain error".to_string();
+        assert_eq!(client.redact(raw), "plain error");
+        assert!(!client.has_key());
     }
 
     #[test]

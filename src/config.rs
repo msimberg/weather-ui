@@ -3,7 +3,10 @@ use std::fmt;
 use std::path::PathBuf;
 
 pub struct Config {
-    pub api_key: String,
+    /// Optional: Open-Meteo needs no key, so the server boots without one.
+    /// A `provider=pirateweather` request without a key fails at dispatch
+    /// time with a clear error instead of refusing to start.
+    pub api_key: Option<String>,
     pub host: String,
     pub port: u16,
     pub static_dir: PathBuf,
@@ -13,16 +16,12 @@ pub struct Config {
 
 #[derive(Debug)]
 pub enum ConfigError {
-    MissingApiKey,
     InvalidPort(String),
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConfigError::MissingApiKey => {
-                write!(f, "PIRATE_WEATHER_API_KEY is not set or empty; see README")
-            }
             ConfigError::InvalidPort(v) => {
                 write!(f, "PORT value {v:?} is not a valid TCP port")
             }
@@ -36,8 +35,7 @@ impl Config {
     pub fn from_env() -> Result<Config, ConfigError> {
         let api_key = env::var("PIRATE_WEATHER_API_KEY")
             .ok()
-            .filter(|k| !k.trim().is_empty())
-            .ok_or(ConfigError::MissingApiKey)?;
+            .filter(|k| !k.trim().is_empty());
         let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let port = match env::var("PORT") {
             Ok(v) => v.parse::<u16>().map_err(|_| ConfigError::InvalidPort(v))?,
@@ -71,9 +69,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_key_error_is_actionable() {
-        assert!(ConfigError::MissingApiKey
-            .to_string()
-            .contains("PIRATE_WEATHER_API_KEY"));
+    fn empty_key_is_none_not_an_error() {
+        // Guards the boot path: an unset or blank key must not kill the
+        // server now that Open-Meteo is a keyless provider option.
+        let key = Some("   ".to_string()).filter(|k| !k.trim().is_empty());
+        assert_eq!(key, None);
     }
 }

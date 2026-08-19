@@ -123,7 +123,8 @@ export function hourLabelTimes(
   xmin: number,
   xmax: number,
 ): number[] {
-  const out: number[] = [];
+  // Phase 1: per-day-part complete arithmetic progressions (see pickStep).
+  const raw: number[] = [];
   for (const g of dayGroups) {
     const dayHours = hours.filter((t) => t >= g.startSec && t < g.endSec);
     // Two parts per day: before now, and from now. One part may be empty.
@@ -140,10 +141,35 @@ export function hourLabelTimes(
       if (part.length === 0) continue;
       const step = pickStep(tz, part, X, xmin, xmax);
       if (step === undefined) continue;
-      for (const t of part) if (localHour(tz, t) % step === 0) out.push(t);
+      for (const t of part) if (localHour(tz, t) % step === 0) raw.push(t);
     }
   }
-  return out;
+
+  // Phase 2: global thinning. Progressions are complete within a part, but
+  // two adjacent parts (or two dense far days) can land labels arbitrarily
+  // close to each other. Resolve collisions by keeping the label nearer to
+  // now and dropping the other; in the far field this is what removes the
+  // lone midnight "0" per day once days get tight (ticks stay regardless).
+  const xNow = X(nowSec);
+  const cand = raw
+    .map((t) => ({ t, x: X(t) }))
+    .filter((c) => c.x >= xmin && c.x <= xmax)
+    .sort((a, b) => Math.abs(a.x - xNow) - Math.abs(b.x - xNow) || a.t - b.t);
+  const takenX: number[] = [];
+  const out: number[] = [];
+  for (const c of cand) {
+    let collides = false;
+    for (const ax of takenX) {
+      if (Math.abs(ax - c.x) < HOUR_LABEL_MIN_PX) {
+        collides = true;
+        break;
+      }
+    }
+    if (collides) continue;
+    takenX.push(c.x);
+    out.push(c.t);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 /** The finest step that keeps every consecutive pair of its labels at least
@@ -309,14 +335,15 @@ export function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bott
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // "now" flag at the TOP of the line, right of the stem, with a bg halo.
-  const y = top - HOUR_ROW_OFFSET;
+  // "now" flag centered on the line, just inside the top of the band stack
+  // (never collides with the hour/day label rows, which live above the
+  // bands), with a bg halo so it stays legible over any band content.
   ctx.font = NOW_FONT;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "bottom";
-  labelHalo(ctx, "now", x + 4, y, palette.bg);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  labelHalo(ctx, "now", x, top + 2, palette.bg);
   ctx.fillStyle = palette.now;
-  ctx.fillText("now", x + 4, y);
+  ctx.fillText("now", x, top + 2);
 }
 
 export function drawCrosshair(

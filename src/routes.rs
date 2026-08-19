@@ -17,6 +17,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::cache::Cache;
 use crate::merge;
+use crate::openmeteo::{self, OpenMeteoClient};
 use crate::pirate::{PirateClient, UpstreamError};
 
 pub const MAX_PAST_DAYS: u32 = 30;
@@ -24,6 +25,7 @@ const FORECAST_TTL: Duration = Duration::from_secs(600);
 const GEOCODE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 const SECS_PER_DAY: i64 = 86_400;
 const UNITS: [&str; 5] = ["si", "us", "ca", "uk", "uk2"];
+const PROVIDERS: [&str; 2] = ["openmeteo", "pirateweather"];
 
 /// Model family names accepted by Pirate Weather's exclude parameter.
 const MODELS: [&str; 12] = [
@@ -34,12 +36,13 @@ const MODELS: [&str; 12] = [
 #[derive(Clone)]
 pub struct AppState {
     client: PirateClient,
+    om: OpenMeteoClient,
     cache: Arc<Cache>,
 }
 
 impl AppState {
-    pub fn new(client: PirateClient, cache: Arc<Cache>) -> AppState {
-        AppState { client, cache }
+    pub fn new(client: PirateClient, om: OpenMeteoClient, cache: Arc<Cache>) -> AppState {
+        AppState { client, om, cache }
     }
 }
 
@@ -52,8 +55,8 @@ pub struct WeatherQuery {
     lang: Option<String>,
     exclude: Option<String>,
     aimodels: Option<bool>,
+    provider: Option<String>,
 }
-
 #[derive(Deserialize)]
 pub struct GeoQuery {
     q: Option<String>,
@@ -114,6 +117,7 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
     let past_days = q.past_days.unwrap_or(4).min(MAX_PAST_DAYS);
     let units = q.units.unwrap_or_else(|| "si".to_string());
     let lang = q.lang.unwrap_or_else(|| "en".to_string());
+    let provider = q.provider.unwrap_or_else(|| "openmeteo".to_string());
     if !(-90.0..=90.0).contains(&q.lat) {
         return bad_request("lat must be in [-90, 90]").into_response();
     }
@@ -127,6 +131,9 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
     if !lang.chars().all(|c| c.is_ascii_lowercase() || c == '-') || lang.is_empty() || lang.len() > 12
     {
         return bad_request("lang must be a short language code").into_response();
+    }
+    if !PROVIDERS.contains(&provider.as_str()) {
+        return bad_request("provider must be one of openmeteo, pirateweather").into_response();
     }
 
     let exclude = q.exclude.unwrap_or_default();
@@ -143,24 +150,73 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
     let model_variant = format!("{exclude}+{aimodels}");
 
     let coords = format!("{:.3},{:.3}", q.lat, lon);
-    let weather_key = format!("wx:{coords}:{units}:{lang}:{past_days}:{model_variant}");
+    let weather_key =
+        format!("wx:{provider}:{coords}:{units}:{lang}:{past_days}:{model_variant}");
     if let Some(cached) = state.cache.get(&weather_key) {
         return ([(CACHE_CONTROL, "no-store")], Json(cached)).into_response();
     }
 
+    // Provider branches converge on one Dark Sky-shaped document, then share
+    // the cache insert and response headers below.
+    let merged = if provider == "openmeteo" {
+        // One call covers forecast + past days + cloud layers + nowcast.
+        match state.om.forecast(q.lat, lon, past_days, &units).await {
+            Ok(v) => {
+                let doc = openmeteo::to_dark_sky(&v, &units);
+                merge::merge(&doc, &[], vec![])
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "open-meteo request failed");
+                return upstream_failure(&e).into_response();
+            }
+        }
+    } else {
+        if !state.client.has_key() {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": "pirateweather provider selected but PIRATE_WEATHER_API_KEY is not configured on the server"
+                })),
+            )
+                .into_response();
+        }
+        match fetch_pirate(&state, q.lat, lon, past_days, &units, &lang, &exclude, aimodels, &coords).await {
+            Ok(doc) => doc,
+            Err(e) => return e.into_response(),
+        }
+    };
+    state.cache.insert(weather_key, merged.clone(), Some(FORECAST_TTL));
+    ([(CACHE_CONTROL, "no-store")], Json(merged)).into_response()
+}
+
+/// Pirate path: forecast + timemachine fan-out for past days + Open-Meteo
+/// cloud layers, merged into one document. Fatal failures map to the same
+/// upstream error response as before; non-fatal partial failures become
+/// meta.warnings.
+async fn fetch_pirate(
+    state: &AppState,
+    lat: f64,
+    lon: f64,
+    past_days: u32,
+    units: &str,
+    lang: &str,
+    exclude: &str,
+    aimodels: bool,
+    coords: &str,
+) -> Result<Value, Response> {
     // Forecast (fatal) and cloud layers (non-fatal) run concurrently.
     let fc_client = state.client.clone();
     let om_client = state.client.clone();
-    let (fc_units, fc_lang) = (units.clone(), lang.clone());
-    let fc_future = fc_client.forecast(q.lat, lon, &fc_units, &fc_lang, &exclude, aimodels);
-    let om_future = om_client.cloud_layers(q.lat, lon, past_days);
+    let (fc_units, fc_lang) = (units.to_string(), lang.to_string());
+    let fc_future = fc_client.forecast(lat, lon, &fc_units, &fc_lang, exclude, aimodels);
+    let om_future = om_client.cloud_layers(lat, lon, past_days);
     let (forecast_result, om_result) = tokio::join!(fc_future, om_future);
 
     let forecast = match forecast_result {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(error = %e, "forecast request failed");
-            return upstream_failure(&e).into_response();
+            return Err(upstream_failure(&e).into_response());
         }
     };
 
@@ -182,9 +238,8 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
             let client = state.client.clone();
             let cache = state.cache.clone();
             let key = format!("tm:{coords}:{ts}:{units}:{lang}");
-            let lat = q.lat;
-            let units = units.clone();
-            let lang = lang.clone();
+            let units = units.to_string();
+            let lang = lang.to_string();
             set.spawn(async move {
                 if let Some(v) = cache.get(&key) {
                     return Ok((ago, v));
@@ -216,8 +271,7 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         let root = merged.as_object_mut().expect("merged response is an object");
         root.insert("cloudLayers".to_string(), cl);
     }
-    state.cache.insert(weather_key, merged.clone(), Some(FORECAST_TTL));
-    ([(CACHE_CONTROL, "no-store")], Json(merged)).into_response()
+    Ok(merged)
 }
 
 async fn health() -> Json<Value> {

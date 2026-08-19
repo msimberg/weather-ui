@@ -40,6 +40,17 @@ export function SettingsPanel() {
     setSettings({ bandOrder: order });
   };
 
+  const PROVIDERS = [
+    {
+      id: "openmeteo",
+      note: "Open-Meteo best-match (MeteoSwiss ICON-CH 1-2 km in Switzerland). No API key needed.",
+    },
+    {
+      id: "pirateweather",
+      note: "Pirate Weather (Dark Sky): multi-model blend with richer US fields; needs a server-side API key.",
+    },
+  ];
+
   const toggleModel = (id: string, excluded: boolean) => {
     const cur = settings().excludeModels;
     setSettings({
@@ -169,6 +180,23 @@ export function SettingsPanel() {
             </select>
           </label>
           <label>
+            Data source
+            <select
+              value={settings().provider}
+              onChange={(e) =>
+                setSettings({ provider: e.currentTarget.value as "openmeteo" | "pirateweather" })
+              }
+            >
+              <For each={PROVIDERS}>
+                {(p) => (
+                  <option value={p.id} title={p.note}>
+                    {p.id}
+                  </option>
+                )}
+              </For>
+            </select>
+          </label>
+          <label>
             Auto-refresh
             <input
               type="checkbox"
@@ -244,6 +272,7 @@ export function SettingsPanel() {
             </For>
           </fieldset>
 
+          <Show when={settings().provider === "pirateweather"}>
           <fieldset class="model-blend">
             <legend>Model blend</legend>
             <label>
@@ -269,6 +298,7 @@ export function SettingsPanel() {
               </For>
             </div>
           </fieldset>
+          </Show>
         </div>
       </Show>
     </div>

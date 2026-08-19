@@ -7,9 +7,15 @@ directions. There are no separate hourly/daily/weekly views. One axis,
 past days fading into lower detail on the left, forecast days compressing
 into daily summary bands on the right.
 
-Data comes from [Pirate Weather](https://pirateweather.net) (Dark Sky
-compatible), location search from OpenStreetMap Nominatim, and
-altitude-layered cloud cover from Open-Meteo (no key required).
+Data comes from a selectable provider: [Open-Meteo](https://open-meteo.com)
+(the default; best-match national models with no key, e.g. MeteoSwiss
+ICON-CH at 1-2 km over Switzerland) or [Pirate
+Weather](https://pirateweather.net) (Dark Sky compatible; multi-model
+blend with richer US fields, requires an API key). The backend translates
+both into one Dark Sky-shaped document, so the frontend pipeline is
+provider-agnostic. Location search comes from OpenStreetMap Nominatim,
+and altitude-layered cloud cover comes from Open-Meteo (no key);
+with provider=openmeteo the cloud layers ride the same request.
 ## What the timeline shows
 
 1. **Precipitation**: hourly intensity bars tiled as a histogram
@@ -55,34 +61,46 @@ at a configurable interval while the tab is visible. The styling aims
 for a quiet scientific chart: one near-neutral ink family per theme with
 no accent hues.
 
-The model blend behind the forecast is adjustable in settings: any of
-Pirate Weather's model families (HRRR, NBM, GFS, GEFS, RTMA, ECMWF IFS,
-MOSMIX, RAQDPS, SILAM) can be excluded, and the AI family
-(AIGFS/AIGEFS/ECMWF-AIFS) can be included via `include=aimodels`. The
-blend is a single merged series upstream; per-model plots are not
-possible with this API.
+With provider=pirateweather, the model blend behind the forecast is
+adjustable in settings: any of Pirate Weather's model families (HRRR,
+NBM, GFS, GEFS, RTMA, ECMWF IFS, MOSMIX, RAQDPS, SILAM) can be excluded,
+and the AI family (AIGFS/AIGEFS/ECMWF-AIFS) can be included via
+`include=aimodels`. The blend is a single merged series upstream;
+per-model plots are not possible with this API. These settings are
+Pirate-specific and hidden for provider=openmeteo.
 
 ## Architecture
 
-- `src/`: Rust (axum) server. Proxies Pirate Weather, merges forecast +
-  per-past-day timemachine responses into one Dark Sky-shaped document,
-  caches results, proxies Nominatim geocoding, serves the frontend.
+- `src/`: Rust (axum) server. Fetches from the selected provider
+  (`openmeteo.rs` translates Open-Meteo into the shared shape;
+  `pirate.rs` + `merge.rs` merge forecast + per-past-day timemachine
+  responses), caches results, proxies Nominatim geocoding, serves the
+  frontend.
 - `frontend/`: Solid + Vite + TypeScript. The timeline is one
   DPR-aware canvas; Solid renders only the chrome (search, settings,
   current conditions, alerts, tooltip).
 
-Why the merge is server-side: the API key never reaches the browser,
-the browser CORS question disappears, and caching cuts quota usage.
-Past days are immutable and cached permanently; forecasts and today's
-live day refresh every 10 minutes. Pirate Weather's free tier is 10,000
-calls/month, and one cold view costs `1 + past_days` upstream calls, so
-this caching is the difference between comfortable and quota exhaustion.
+Why the merge is server-side: the API key (only Pirate Weather needs
+one) never reaches the browser, the browser CORS question disappears, and
+caching cuts quota usage. Past days are immutable and cached permanently;
+forecasts and today's live day refresh every 10 minutes. With
+provider=openmeteo, one view costs exactly one upstream call (forecast +
+past days + cloud layers + nowcast ride in a single response), and
+Open-Meteo non-commercial use allows 10,000 calls/day. With
+provider=pirateweather, one cold view costs `1 + past_days` calls against
+the 10,000 calls/month free tier, so caching is the difference between
+comfortable and quota exhaustion.
 
 ### Precisions worth knowing
 
-- Timemachine data is model archive (last 10 days: GFS; older: ERA5, ca.
-  10 days behind realtime), not station observations. Past hours are
-  therefore modeled history; the footer says so.
+- Pirate Weather timemachine data is model archive (last 10 days: GFS;
+  older: ERA5, ca. 10 days behind realtime), not station observations.
+  Open-Meteo past days are model output as well. Past hours are modeled
+  history either way; the footer says so.
+- Open-Meteo has no per-minute nowcast, no alerts, and no intensity
+  error field; `minutely` is 15-minute data (next 2 hours only), alerts
+  are always empty, and the precip error halo is absent. Conversely,
+  Open-Meteo needs no key and is one call per view.
 - The backend API keeps Pirate Weather field names verbatim; the
   frontend renders only what is present (field coverage varies by model
   source and location).
@@ -99,10 +117,12 @@ this caching is the difference between comfortable and quota exhaustion.
 All routes are unauthenticated and assume a trusted network (see
 *Deployment considerations*).
 
-- `GET /api/weather?lat=&lon=&past_days=&units=&lang=`
+- `GET /api/weather?lat=&lon=&past_days=&units=&lang=&provider=`
   Merged document: Dark Sky-shaped; `hourly.data` covers past days plus
   168 forecast hours, `daily.data` covers past days plus 7 forecast days.
-  `meta.warnings` lists partially failed past-day loads.
+  `meta.warnings` lists partially failed past-day loads. `provider` is
+  `openmeteo` (default) or `pirateweather`; selecting pirateweather
+  without a configured `PIRATE_WEATHER_API_KEY` returns 503.
 - `GET /api/geocode?q=&lang=` -> `[{name, lat, lon}]`
 - `GET /api/reverse?lat=&lon=&lang=` -> `{name, lat, lon}`
 - `GET /api/health`
@@ -113,7 +133,7 @@ Environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PIRATE_WEATHER_API_KEY` | (required) | Pirate Weather API key; server exits if missing |
+| `PIRATE_WEATHER_API_KEY` | unset | Pirate Weather API key; optional -- only required for provider=pirateweather requests |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8087` | Port |
 | `WEATHER_UI_STATIC_DIR` | `./frontend/dist` | Built frontend to serve |
@@ -125,7 +145,8 @@ Environment variables:
 
 ```sh
 docker build -t weather-ui .
-docker run --rm -e PIRATE_WEATHER_API_KEY -p 8087:8087 weather-ui
+docker run --rm -p 8087:8087 weather-ui
+# add -e PIRATE_WEATHER_API_KEY=... only if you use the pirate provider
 ```
 
 or

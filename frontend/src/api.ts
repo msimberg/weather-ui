@@ -17,6 +17,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export function fetchWeather(
   location: CurrentLocation,
+  provider: "openmeteo" | "pirateweather",
   pastDays: number,
   units: Units,
   lang: string,
@@ -31,6 +32,7 @@ export function fetchWeather(
     units,
     lang,
     aimodels: String(aiModels),
+    provider,
   });
   if (excludeModels.length > 0) params.set("exclude", excludeModels.join(","));
   return fetchJson<WeatherPayload>(`/api/weather?${params}`, signal);

@@ -68,4 +68,42 @@ describe("hourLabelTimes", () => {
     const hours = out.map(localHourOf);
     expect(hours).toEqual([0]);
   });
+
+  it("thins midnight zeros across adjacent days when days get tight", () => {
+    // 5 days at 0.5 px/hour: each day individually labels only its midnight
+    // (12 px apart), but consecutive midnights collide at < 14 px, so the
+    // global pass keeps only every other one. Nearest to now wins.
+    const DAYS = 5;
+    const groups = Array.from({ length: DAYS }, (_, i) => ({
+      startSec: BASE + i * DAY,
+      endSec: BASE + (i + 1) * DAY,
+    }));
+    const hours = Array.from({ length: DAYS * 24 }, (_, i) => BASE + i * 3600);
+    const now = BASE + DAYS * DAY;
+    const X = (t: number) => (t - BASE) / 3600 * 0.5;
+    const out = hourLabelTimes(TZ, groups, hours, now, X, 0, 10000);
+    const kept = out.map(localHourOf);
+    // Every kept label is a midnight, and none is closer than the minimum.
+    expect(kept.every((h) => h === 0)).toBe(true);
+    const xs = out.map(X).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(HOUR_LABEL_MIN_PX);
+    }
+    expect(out.length).toBeLessThan(DAYS);
+  });
+
+  it("keeps the label nearer to now when two parts collide", () => {
+    // Same day, split at now=12:30. Past part at 1 px/h -> only midnight.
+    // Future part at 20 px/h -> every hour. Midnight would keep its slot
+    // only if nothing collides; here the near-now hour labels win outright,
+    // while the distant midnight remains (no collision at 14 px apart).
+    const now = BASE + 12 * 3600 + 1800;
+    const X = (t: number) =>
+      t < now ? (t - BASE) / 3600 : (12 * 1) + (t - BASE - 12 * 3600) / 3600 * 20;
+    const out = hourLabelTimes(TZ, [DAY_GROUP], HOURS, now, X, 0, 10000);
+    const hours = out.map(localHourOf).sort((a, b) => a - b);
+    expect(hours).toContain(0);
+    expect(hours).toContain(13);
+    expect(hours).toContain(23);
+  });
 });

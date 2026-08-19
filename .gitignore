@@ -2,3 +2,6 @@
 /frontend/node_modules
 /frontend/dist
 .env
+
+# vitest cache dir created inside src when cwd is src
+/frontend/src/node_modules

@@ -85,16 +85,19 @@ export function drawPrecip(
     });
   }
 
-  // Contiguous bars: each spans to the midpoint with its neighbours, so
-  // there is never a gap (especially on wide windows and the current day).
+  // Contiguous bars: each spans to the midpoint with its neighbours, at
+  // whole-pixel edges. Both bars compute the same midpoint value and round
+  // it to the same integer column boundary, so bar i's right edge IS bar
+  // i+1's left edge; fillRect at integer coordinates covers full pixel
+  // columns and there is no half-covered seam column between them.
   const xs = model.hours.map((hr) => X(hr.time));
   const barX = (i: number): [number, number] => {
     const here = xs[i];
     const prev = i > 0 ? xs[i - 1] : 2 * here - xs[i + 1];
     const next = i < xs.length - 1 ? xs[i + 1] : 2 * here - prev;
-    const x0 = Math.max(gutter, (prev + here) / 2);
-    const x1 = Math.min(right, (here + next) / 2);
-    return [x0, Math.max(x0 + 0.5, x1)];
+    const x0 = Math.round(Math.max(gutter, (prev + here) / 2));
+    const x1 = Math.round(Math.min(right, (here + next) / 2));
+    return [x0, Math.max(x0, x1)];
   };
   for (let i = 0; i < model.hours.length; i++) {
     const hr = model.hours[i];
@@ -103,6 +106,7 @@ export function drawPrecip(
     const w = fade(hr.time);
     const [x0, x1] = barX(i);
     const bw = x1 - x0;
+    if (bw < 1) continue; // compressed below one pixel column: nothing to paint
     if (err > 0.02 && v + err > 0.01) {
       const lo = Math.max(0, v - err);
       ctx.globalAlpha = 0.18 * w;
@@ -150,11 +154,12 @@ export function drawPrecip(
       env.units === "us"
         ? `${accum.toFixed(2)}in`
         : `${(accum * 10).toFixed(accum * 10 < 10 ? 1 : 0)}mm total`;
-    // The label sits at the foot of the band, over the rain bars, so it
-    // gets a bg-colored stroke outline to stay legible there.
-    labelHalo(ctx, text, cx, band.y1 - 3, palette.bg, 90);
+    // The label sits just above the bar baseline (visually near the foot
+    // of the band but with a hair of air under it), over the rain bars, so
+    // it gets a bg-colored stroke outline to stay legible there.
+    labelHalo(ctx, text, cx, band.y1 - BAND_PAD - 1, palette.bg, 90);
     ctx.fillStyle = palette.sub;
-    ctx.fillText(text, cx, band.y1 - 3, 90);
+    ctx.fillText(text, cx, band.y1 - BAND_PAD - 1, 90);
   }
   ctx.globalAlpha = 1;
 }
@@ -239,8 +244,12 @@ export function drawTemp(
   strokeWeighted(ctx, appPts, palette.sub, 1.4, [5, 4]);
   strokeWeighted(ctx, linePts, palette.temp, 2.4);
 
-  // Daily high/low dots and labels, gated only by space. The high label
-  // sits at the high point, the low label at the low point (never combined).
+  // Daily high/low dots and labels. Marker and number come as one unit, and
+  // a day's H and L come as one atomic group: either both dots AND both
+  // labels appear, or the day shows neither. A dot whose value is missing
+  // reads as a bug, and an H without the neighboring L truncates the
+  // envelope information. The smooth hi/lo envelope above still carries the
+  // aggregate shape where groups are dropped.
   labels.reset();
   ctx.font = FONT_DATA_BOLD;
   ctx.textAlign = "center";
@@ -253,27 +262,26 @@ export function drawTemp(
     const lt = g.day.temperatureLowTime ?? (g.startSec + g.endSec) / 2;
     const xh = clampX(X(ht), gutter, right);
     const xl = clampX(X(lt), gutter, right);
-    const f = Math.min(1, fade((g.startSec + g.endSec) / 2) + AGGREGATE_MIN_ALPHA);
     const dayW = Math.abs(X(g.endSec) - X(g.startSec));
-    if (dayW > 6) {
-      ctx.globalAlpha = f;
-      ctx.beginPath();
-      ctx.arc(xh, y(hi), 2.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(xl, y(lo), 2.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (dayW > 34 && labels.tryPlace(xh, 14)) {
-      ctx.globalAlpha = f;
-      ctx.textBaseline = "bottom";
-      ctx.fillText(formatTemp(hi), xh, y(hi) - 3);
-    }
-    if (dayW > 34 && labels.tryPlace(xl, 14)) {
-      ctx.globalAlpha = f;
-      ctx.textBaseline = "top";
-      ctx.fillText(formatTemp(lo), xl, y(lo) + 3);
-    }
+    if (dayW <= 34) continue;
+    // Atomic per day: both labels must fit against prior placements AND not
+    // collide with each other (H and L within one day are both 14 half-width).
+    if (Math.abs(xh - xl) < 28) continue;
+    if (!labels.fits(xh, 14) || !labels.fits(xl, 14)) continue;
+    labels.tryPlace(xh, 14);
+    labels.tryPlace(xl, 14);
+    const f = Math.min(1, fade((g.startSec + g.endSec) / 2) + AGGREGATE_MIN_ALPHA);
+    ctx.globalAlpha = f;
+    ctx.beginPath();
+    ctx.arc(xh, y(hi), 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(xl, y(lo), 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.textBaseline = "bottom";
+    ctx.fillText(formatTemp(hi), xh, y(hi) - 3);
+    ctx.textBaseline = "top";
+    ctx.fillText(formatTemp(lo), xl, y(lo) + 3);
   }
   ctx.globalAlpha = 1;
 }
@@ -387,6 +395,8 @@ export function drawWind(
 
   // Daily maximum gust: one dot + value per day, at the hour that peaked,
   // placed at the top of the band with a bg halo so it reads over the line.
+  // Same gating as the temperature H/L markers: dot and value are atomic,
+  // and dense days drop the whole marker (space-gated below).
   labels.reset();
   ctx.font = FONT_DATA_BOLD;
   ctx.textAlign = "center";
@@ -403,8 +413,11 @@ export function drawWind(
       }
     }
     if (!bt || best <= 0) continue;
+    const dayW = Math.abs(X(g.endSec) - X(g.startSec));
+    if (dayW <= 34) continue;
     const x = clampX(X(bt.time), gutter, right);
     const yy = y(best);
+    if (!labels.tryPlace(x, 24)) continue;
     ctx.globalAlpha = Math.min(1, fade((g.startSec + g.endSec) / 2) + AGGREGATE_MIN_ALPHA);
     ctx.fillStyle = palette.bg;
     ctx.beginPath();
