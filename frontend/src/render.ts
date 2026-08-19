@@ -25,19 +25,12 @@ export interface Palette {
   night: string;
   now: string;
   temp: string;
-  appTemp: string;
   hiLo: string;
   rain: string;
   snow: string;
   ice: string;
-  prob: string;
   wind: string;
-  gust: string;
   cloudInk: string;
-  uv: string;
-  layerLo: string;
-  layerMid: string;
-  layerHi: string;
 }
 
 export const LIGHT: Palette = {
@@ -48,19 +41,12 @@ export const LIGHT: Palette = {
   night: "rgba(23, 25, 29, 0.05)",
   now: "#17191d",
   temp: "#17191d",
-  appTemp: "rgba(23, 25, 29, 0.5)",
   hiLo: "#17191d",
   rain: "#17191d",
   snow: "#6b7480",
   ice: "#8b96a3",
-  prob: "#3d444b",
   wind: "#17191d",
-  gust: "rgba(23, 25, 29, 0.5)",
   cloudInk: "#17191d",
-  uv: "#3d444b",
-  layerLo: "#17191d",
-  layerMid: "#59606a",
-  layerHi: "#8b96a3",
 };
 
 export const DARK: Palette = {
@@ -71,19 +57,12 @@ export const DARK: Palette = {
   night: "rgba(230, 227, 222, 0.045)",
   now: "#e6e3de",
   temp: "#e6e3de",
-  appTemp: "rgba(230, 227, 222, 0.5)",
   hiLo: "#e6e3de",
-  rain: "#c9cfda",
+  rain: "#e6e3de",
   snow: "#f2efeb",
   ice: "#a3adbd",
-  prob: "#828c99",
   wind: "#e6e3de",
-  gust: "rgba(230, 227, 222, 0.5)",
   cloudInk: "#e6e3de",
-  uv: "#828c99",
-  layerLo: "#e6e3de",
-  layerMid: "#a9b0bc",
-  layerHi: "#6f7785",
 };
 
 export function iconStyle(p: Palette): IconStyle {
@@ -128,8 +107,8 @@ export interface ViewOptions {
 
 
 const TOP_PAD = 4;
-const TOP_AXIS_H = 38;
-const BOTTOM_AXIS_H = 38;
+const TOP_AXIS_H = 68;
+const BOTTOM_AXIS_H = 68;
 const BAND_GAP = 4;
 const TITLE_W = 12;
 
@@ -190,11 +169,11 @@ export function bandLayout(
     bandsTop: top,
     bandsBottom: bottom,
     bands,
-    topDayY: top - 26,
-    topHourY: top - 12,
-    bottomHourY: bottom + 12,
-    bottomDayY: bottom + 26,
-  };
+    topDayY: top - 24,
+    topHourY: top - 10,
+    bottomHourY: bottom + 10,
+    bottomDayY: bottom + 24,
+};
 }
 
 type Ctx = CanvasRenderingContext2D;
@@ -360,7 +339,9 @@ export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view:
   drawCurrentDayHours(ctx, palette, model, view, X, L, gutter, right);
 
   drawAxis(ctx, palette, model, L, X, gutter, right, cssH);
-  drawNow(ctx, palette, Xnow, bandsTop, bandsBottom, L.bottomDayY);
+  ctx.globalAlpha = 1;
+  drawNow(ctx, palette, Xnow, bandsTop, bandsBottom);
+
   if (hoverSec !== null) drawCrosshair(ctx, model, view, hoverSec, X, L.bands);
 }
 
@@ -517,7 +498,7 @@ function drawPrecip(
     }
   }
 
-  strokeWeighted(ctx, probPts, palette.prob, 1.4);
+  strokeWeighted(ctx, probPts, palette.sub, 1.4);
 
   labels.reset();
   ctx.font = `10px ${UI_FONT}`;
@@ -626,7 +607,7 @@ function drawTemp(
     if (hr.apparentTemperature !== undefined)
       appPts.push({ x: X(hr.time), y: y(hr.apparentTemperature), w: f * 0.85 });
   }
-  strokeWeighted(ctx, appPts, palette.appTemp, 1.4, [5, 4]);
+  strokeWeighted(ctx, appPts, palette.sub, 1.4, [5, 4]);
   strokeWeighted(ctx, linePts, palette.temp, 2.4);
 
   // Daily high/low dots and labels, gated only by space. The high label
@@ -763,7 +744,7 @@ function drawWind(
     if (hr.windGust !== undefined) gustPts.push({ x: X(hr.time), y: y(hr.windGust), w: f * 0.75 });
     if (hr.windSpeed !== undefined) speedPts.push({ x: X(hr.time), y: y(hr.windSpeed), w: f });
   }
-  strokeWeighted(ctx, gustPts, palette.gust, 1.4);
+  strokeWeighted(ctx, gustPts, palette.sub, 1.4);
   strokeWeighted(ctx, speedPts, palette.wind, 2.4);
 
   // Barbs at a fixed pixel spacing, so they show on every window width
@@ -805,7 +786,7 @@ function drawWind(
     ctx.beginPath();
     ctx.arc(x, yy, 3.6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = palette.gust;
+    ctx.fillStyle = palette.sub;
     ctx.beginPath();
     ctx.arc(x, yy, 2.4, 0, Math.PI * 2);
     ctx.fill();
@@ -814,7 +795,7 @@ function drawWind(
     ctx.strokeStyle = palette.bg;
     ctx.textBaseline = "bottom";
     ctx.strokeText(text, x, yy - 5);
-    ctx.fillStyle = palette.gust;
+    ctx.fillStyle = palette.sub;
     ctx.fillText(text, x, yy - 5);
   }
   ctx.globalAlpha = 1;
@@ -973,7 +954,7 @@ function drawCloud(
   path();
   ctx.stroke();
   // Line: the UV ink, on top.
-  ctx.strokeStyle = palette.uv;
+  ctx.strokeStyle = palette.sub;
   ctx.lineWidth = 1.8;
   ctx.globalAlpha = 0.95;
   path();
@@ -991,14 +972,22 @@ function drawCloud(
   while (i < uvPts.length) {
     let j = i + 1;
     while (j < uvPts.length && uvPts[j].v === uvPts[i].v) j++;
-    const cx = (uvPts[i].x + uvPts[j - 1].x) / 2;
+    // The horizontal run extends from uvPts[i].x to the next step edge
+    // (uvPts[j].x, where the value changes); center the label on that
+    // span, not on the points, so it never sits at a step start.
+    const xEnd = j < uvPts.length ? uvPts[j].x : uvPts[j - 1].x;
+    const cx = (uvPts[i].x + xEnd) / 2;
     const v = uvPts[i].v;
     if (v >= 3 && labels.tryPlace(cx, 8)) {
+      const text = String(Math.round(v));
       ctx.globalAlpha = fade(uvPts[i].t);
-      ctx.fillStyle = bg;
-      ctx.fillText(String(Math.round(v)), cx, uvY(v) - 2);
-      ctx.fillStyle = palette.uv;
-      ctx.fillText(String(Math.round(v)), cx, uvY(v) - 2);
+      // A real bg stroke (halo) so the value reads against the clouds.
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = bg;
+      ctx.strokeText(text, cx, uvY(v) - 2);
+      ctx.fillStyle = palette.sub;
+      ctx.fillText(text, cx, uvY(v) - 2);
     }
     i = j;
   }
@@ -1046,10 +1035,16 @@ function drawAxis(
       const w = x1 - x0;
       if (w < 14) continue;
       const cx = (x0 + x1) / 2;
-      if (w < 44) {
+      if (w < 48) {
+        // Emanate from the day's midpoint: the text starts at the
+        // midpoint and radiates outward from the band at a steep angle
+        // (top row up, bottom row down), rather than being centered on
+        // the midpoint then tilted. textAlign="left" anchors the start
+        // of the text at the midpoint; the clip keeps it off the bands.
         ctx.save();
         ctx.translate(cx, y);
-        ctx.rotate(-0.6);
+        ctx.rotate(dir * 1.1);
+        ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.fillText(g.label, 0, 0);
         ctx.restore();
@@ -1157,7 +1152,8 @@ function drawCurrentDayHours(
   ctx.globalAlpha = 1;
 }
 
-function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bottom: number, labelY: number) {
+function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bottom: number) {
+  // Vertical now line through the bands.
   ctx.strokeStyle = palette.now;
   ctx.globalAlpha = 0.9;
   ctx.lineWidth = 1.6;
@@ -1166,11 +1162,17 @@ function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bottom: num
   ctx.lineTo(x, bottom);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.font = `600 11px ${UI_FONT}`;
-  ctx.fillStyle = palette.now;
+  // "now" tag at the TOP of the line, just above the bands, with a bg
+  // halo so it reads against the chart and never crowds the bottom.
+  ctx.font = `600 10px ${UI_FONT}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
-  ctx.fillText("now", x + 4, labelY);
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = palette.bg;
+  ctx.strokeText("now", x + 4, top - 2);
+  ctx.fillStyle = palette.now;
+  ctx.fillText("now", x + 4, top - 2);
 }
 
 function drawCrosshair(
@@ -1214,10 +1216,10 @@ function drawCrosshair(
   dot(interpAt(model.hours, hoverSec, (h) => h.windSpeed), (v) => bandY(wb, v / model.domains.windMax), palette.wind);
 
   const cb = bands.cloud;
-  dot(interpAt(model.hours, hoverSec, (h) => h.uvIndex), (v) => bandY(cb, v / 11), palette.uv, 2.5);
+  dot(interpAt(model.hours, hoverSec, (h) => h.uvIndex), (v) => bandY(cb, v / 11), palette.sub, 2.5);
 
   const pb = bands.precip;
-  dot(interpAt(model.hours, hoverSec, (h) => h.precipProbability), (v) => bandY(pb, v), palette.prob, 2.5);
+  dot(interpAt(model.hours, hoverSec, (h) => h.precipProbability), (v) => bandY(pb, v), palette.sub, 2.5);
 
   ctx.globalAlpha = 1;
 }

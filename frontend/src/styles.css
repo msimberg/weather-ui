@@ -37,7 +37,7 @@ body {
   /* One monospace face everywhere, so the dashboard and the chart read as
      the same instrument. */
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -125,7 +125,7 @@ button.icon-btn {
 }
 
 .status-chip {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--sub);
   white-space: nowrap;
 }
@@ -154,7 +154,7 @@ button.icon-btn {
 
 .alert time {
   color: var(--sub);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .current {
@@ -174,7 +174,7 @@ button.icon-btn {
 }
 
 .current .nowdt {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--sub);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -220,7 +220,7 @@ button.icon-btn {
 
 .datum .k {
   color: var(--sub);
-  font-size: 0.82em;
+  font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: lowercase;
 }
@@ -258,7 +258,7 @@ button.icon-btn {
   border: 0;
   background: transparent;
   color: var(--sub);
-  font: 600 10px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font: 600 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   letter-spacing: 0.06em;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
@@ -277,7 +277,7 @@ button.icon-btn {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13px;
   min-width: 190px;
   max-width: 300px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
@@ -345,7 +345,7 @@ button.icon-btn {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--sub);
 }
 
@@ -368,7 +368,7 @@ button.icon-btn {
   border-radius: 4px;
   padding: 2px 4px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .band-order {
@@ -386,7 +386,7 @@ button.icon-btn {
 .band-order .row .name {
   flex: 1;
   color: var(--fg);
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -474,7 +474,7 @@ footer .warn {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--sub);
 }
 
@@ -508,7 +508,10 @@ footer .warn {
    header and footer sit just above and below the chart and the whole stack
    centers vertically instead of pinning to the screen edges. */
 #root.compact {
-  justify-content: center;
+  /* Pack header, chart, and footer together so
+     compact mode has no large gaps around the chart. */
+  justify-content: flex-start;
+  min-height: 0;
 }
 
 /* sun strip: sunrise/sunset times inline */
@@ -518,7 +521,7 @@ footer .warn {
   gap: 8px;
   padding: 4px 12px;
   color: var(--sub);
-  font-size: 12px;
+  font-size: 11px;
   border-bottom: 1px solid var(--border);
 }
 .sun-strip .k {
