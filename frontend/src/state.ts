@@ -3,6 +3,7 @@ import { createEffect, createSignal } from "solid-js";
 import { fetchWeather } from "./api";
 import { prepare, type Prepared } from "./prepare";
 import { DEFAULT_NOW_SHARE, DEFAULT_WARP, clamp01, type WarpFn } from "./transform";
+import { BAND_ORDER } from "./render";
 import type { CurrentLocation, Units, WeatherPayload } from "./types";
 
 export interface Settings {
@@ -24,6 +25,8 @@ export interface Settings {
   layout: "full" | "compact";
   /** Pirate Weather model families removed from the blend. */
   excludeModels: string[];
+  /** Top-to-bottom order of the data bands. */
+  bandOrder: string[];
   /** Pirate Weather include=aimodels (AIGFS/AIGEFS/ECMWF-AIFS join the blend). */
   aiModels: boolean;
   lang: string;
@@ -40,6 +43,7 @@ const DEFAULT_SETTINGS: Settings = {
   cloudViz: "density",
   layout: "full",
   excludeModels: [],
+  bandOrder: [...BAND_ORDER],
   aiModels: false,
   lang: "en",
 };
@@ -77,6 +81,12 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
     out.warpFn = "power";
     out.warpStrength = clamp01((1 - power) / 0.85);
   }
+  // Normalize the band order: keep known bands, drop unknowns, append any
+  // missing known band so reorder never loses or breaks a band.
+  const known = new Set(BAND_ORDER);
+  const order = (out.bandOrder ?? []).filter((b) => known.has(b));
+  for (const b of BAND_ORDER) if (!order.includes(b)) order.push(b);
+  out.bandOrder = order;
   return out;
 }
 

@@ -3,6 +3,7 @@ import { createSignal, For, Show } from "solid-js";
 import { setSettings, settings } from "../state";
 import type { WarpFn } from "../transform";
 import type { Units } from "../types";
+import { BAND_TITLE } from "../render";
 
 const LANGS = ["en", "de", "fr", "it", "es", "nl", "pl", "pt", "zh", "ja"];
 
@@ -28,6 +29,16 @@ const WARP_FNS: { id: WarpFn; note: string }[] = [
 
 export function SettingsPanel() {
   const [open, setOpen] = createSignal(false);
+
+  const moveBand = (id: string, dir: -1 | 1) => {
+    const order = settings().bandOrder.slice();
+    const i = order.indexOf(id);
+    if (i < 0) return;
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    setSettings({ bandOrder: order });
+  };
 
   const toggleModel = (id: string, excluded: boolean) => {
     const cur = settings().excludeModels;
@@ -167,6 +178,19 @@ export function SettingsPanel() {
               ))}
             </select>
           </label>
+          <fieldset class="band-order">
+            <legend>Band order (top to bottom)</legend>
+            <For each={settings().bandOrder}>
+              {(id, i) => (
+                <div class="row">
+                  <button type="button" title="Move up" disabled={i() === 0} onClick={() => moveBand(id, -1)}>^</button>
+                  <button type="button" title="Move down" disabled={i() === settings().bandOrder.length - 1} onClick={() => moveBand(id, 1)}>v</button>
+                  <span class="name">{BAND_TITLE[id] ?? id}</span>
+                </div>
+              )}
+            </For>
+          </fieldset>
+
           <fieldset class="model-blend">
             <legend>Model blend</legend>
             <label>

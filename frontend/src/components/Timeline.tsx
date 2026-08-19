@@ -1,7 +1,15 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 
 import { axisRanges, type Prepared } from "../prepare";
-import { DARK, LIGHT, renderTimeline, type Palette } from "../render";
+import {
+  BAND_EXPLAIN,
+  BAND_TITLE,
+  DARK,
+  LIGHT,
+  bandLayout,
+  renderTimeline,
+  type Palette,
+} from "../render";
 import {
   hoverSec,
   model,
@@ -27,8 +35,10 @@ export function Timeline() {
   let wrapRef!: HTMLDivElement;
   let canvasRef!: HTMLCanvasElement;
   // Width is a signal because the axis depends on it; ResizeObserver feeds it.
+  // Width and height are signals because the axis and the band-title
+  // overlay both depend on the canvas size; ResizeObserver feeds them.
   const [width, setWidth] = createSignal(1200);
-
+  const [height, setHeight] = createSignal(600);
   const axis = createMemo<TimeAxis | null>(() => {
     if (!model()) return null;
     const w = width();
@@ -60,15 +70,29 @@ export function Timeline() {
       hoverSec: hoverSec(),
       layout: settings().layout,
       cloudViz: settings().cloudViz,
+      bandOrder: settings().bandOrder,
     });
+  });
+
+  // Band-title overlay: vertical labels at each band's left edge, with the
+  // band's legend in a native tooltip so the chart itself stays uncluttered.
+  const titles = createMemo(() => {
+    const s = settings();
+    const L = bandLayout(width(), height(), s.layout, s.bandOrder);
+    return s.bandOrder
+      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name] }))
+      .filter((t) => t.rect && t.title);
   });
 
   onMount(() => {
     const ro = new ResizeObserver(() => {
-      if (wrapRef) setWidth(wrapRef.clientWidth);
+      if (!wrapRef) return;
+      setWidth(wrapRef.clientWidth);
+      setHeight(wrapRef.clientHeight);
     });
     ro.observe(wrapRef);
     setWidth(wrapRef.clientWidth);
+    setHeight(wrapRef.clientHeight);
     onCleanup(() => ro.disconnect());
   });
 
@@ -129,6 +153,20 @@ export function Timeline() {
       onKeyDown={onKeyDown}
     >
       <canvas ref={canvasRef} />
+      <For each={titles()}>
+        {(t) => (
+          <span
+            class="band-title"
+            title={t.title}
+            style={{
+              top: `${t.rect.y0 + 4}px`,
+              height: `${Math.max(12, t.rect.y1 - t.rect.y0 - 8)}px`,
+            }}
+          >
+            {t.label}
+          </span>
+        )}
+      </For>
       <button
         type="button"
         class="focus-btn"
