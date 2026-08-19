@@ -78,19 +78,30 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     day,
   }));
 
-  // Night intervals come from sunset/sunrise of consecutive days.
-  const nights: NightSpan[] = [];
+  // Night intervals come from sunset/sunrise of consecutive days. Each day
+  // emits its pre-dawn (midnight to sunrise) and its main night (sunset to
+  // next sunrise); those overlap across midnight, so merge them before the
+  // renderer fills them. Without the merge the post-midnight half of every
+  // night is painted twice and reads darker than the pre-midnight half.
+  const rawNights: NightSpan[] = [];
   for (let i = 0; i < dayGroups.length; i++) {
     const day = dayGroups[i].day;
     if (day.sunsetTime) {
       const next = dayGroups[i + 1]?.day;
       if (next?.sunriseTime) {
-        nights.push({ startSec: day.sunsetTime, endSec: next.sunriseTime });
+        rawNights.push({ startSec: day.sunsetTime, endSec: next.sunriseTime });
       }
     }
     if (day.sunriseTime && day.sunsetTime && day.sunriseTime > dayGroups[i].startSec) {
-      nights.push({ startSec: dayGroups[i].startSec, endSec: day.sunriseTime });
+      rawNights.push({ startSec: dayGroups[i].startSec, endSec: day.sunriseTime });
     }
+  }
+  rawNights.sort((a, b) => a.startSec - b.startSec);
+  const nights: NightSpan[] = [];
+  for (const sp of rawNights) {
+    const last = nights[nights.length - 1];
+    if (last && sp.startSec <= last.endSec) last.endSec = Math.max(last.endSec, sp.endSec);
+    else nights.push({ startSec: sp.startSec, endSec: sp.endSec });
   }
 
   let tempLo = Infinity;

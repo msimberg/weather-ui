@@ -54,16 +54,18 @@ export function CurrentStrip() {
                 </span>
               </Show>
             </span>
-            <div class="chips">
+            <div class="data">
               <For each={chipList(cur, settings().units)}>
                 {(c) => (
-                  <span class="chip" title={c.title}>
-                    {c.label} <b>{c.value}</b>
+                  <span class="datum" title={c.title}>
+                    <span class="k">{c.label}</span>
+                    <span class="v">{c.value}</span>
                   </span>
                 )}
               </For>
-              <span class="chip">
-                as of <b>{minutesAgo(nowTick() - m.fetchedAtSec)}</b>
+              <span class="datum" title="Time since the data was fetched">
+                <span class="k">as of</span>
+                <span class="v">{minutesAgo(nowTick() - m.fetchedAtSec)}</span>
               </span>
             </div>
           </div>

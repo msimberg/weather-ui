@@ -49,20 +49,20 @@ export const LIGHT: Palette = {
   grid: "rgba(23, 25, 29, 0.16)",
   night: "rgba(23, 25, 29, 0.05)",
   now: "#17191d",
-  temp: "#b44436",
-  appTemp: "rgba(180, 68, 54, 0.55)",
+  temp: "#17191d",
+  appTemp: "rgba(23, 25, 29, 0.5)",
   hiLo: "#17191d",
-  rain: "#2c343f",
-  snow: "#8b96a3",
-  ice: "#565f6b",
-  prob: "#5f6874",
-  wind: "#232a33",
-  gust: "rgba(35, 42, 51, 0.45)",
+  rain: "#17191d",
+  snow: "#6b7480",
+  ice: "#8b96a3",
+  prob: "#3d444b",
+  wind: "#17191d",
+  gust: "rgba(23, 25, 29, 0.5)",
   cloudInk: "#17191d",
-  uv: "#3f4754",
-  layerLo: "#232a33",
-  layerMid: "#5f6874",
-  layerHi: "#97a0ab",
+  uv: "#3d444b",
+  layerLo: "#17191d",
+  layerMid: "#59606a",
+  layerHi: "#8b96a3",
 };
 
 export const DARK: Palette = {
@@ -72,22 +72,21 @@ export const DARK: Palette = {
   grid: "rgba(230, 227, 222, 0.14)",
   night: "rgba(230, 227, 222, 0.045)",
   now: "#e6e3de",
-  temp: "#cf7b68",
-  appTemp: "rgba(207, 123, 104, 0.55)",
+  temp: "#e6e3de",
+  appTemp: "rgba(230, 227, 222, 0.5)",
   hiLo: "#e6e3de",
   rain: "#c9cfda",
   snow: "#f2efeb",
   ice: "#a3adbd",
-  prob: "#79828f",
-  wind: "#d7dce4",
-  gust: "rgba(215, 220, 228, 0.45)",
+  prob: "#828c99",
+  wind: "#e6e3de",
+  gust: "rgba(230, 227, 222, 0.5)",
   cloudInk: "#e6e3de",
-  uv: "#b6bdc9",
+  uv: "#828c99",
   layerLo: "#e6e3de",
   layerMid: "#a9b0bc",
   layerHi: "#6f7785",
 };
-
 export function iconStyle(p: Palette): IconStyle {
   return { ink: p.fg, accent: p.temp };
 }
@@ -450,11 +449,11 @@ function drawPrecip(
     }
   }
 
-  strokeWeighted(ctx, probPts, palette.prob, 1.2);
+  strokeWeighted(ctx, probPts, palette.prob, 1.4);
 
   // Per-day accumulation totals where the day has room.
   labels.reset();
-  ctx.font = `9px ${UI_FONT}`;
+  ctx.font = `10px ${UI_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   for (const g of model.dayGroups) {
@@ -556,12 +555,12 @@ function drawTemp(
     if (hr.apparentTemperature !== undefined)
       appPts.push({ x: X(hr.time), y: y(hr.apparentTemperature), w: w * 0.85 });
   }
-  strokeWeighted(ctx, linePts, palette.temp, 2.6);
-  strokeWeighted(ctx, appPts, palette.appTemp, 1.2, [5, 4]);
+  strokeWeighted(ctx, linePts, palette.temp, 2.4);
+  strokeWeighted(ctx, appPts, palette.appTemp, 1.4, [5, 4]);
 
   // Gridlines and gutter ticks at nice steps.
   const step = niceStep((tempHi - tempLo) / 4);
-  ctx.font = `10px ${UI_FONT}`;
+  ctx.font = `12px ${UI_FONT}`;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (let v = Math.ceil(tempLo / step) * step; v <= tempHi; v += step) {
@@ -579,7 +578,7 @@ function drawTemp(
 
   // Daily H/L labels where the envelope dominates.
   labels.reset();
-  ctx.font = `11px ${UI_FONT}`;
+  ctx.font = `12px ${UI_FONT}`;
   ctx.fillStyle = palette.hiLo;
   ctx.textAlign = "center";
   for (const g of model.dayGroups) {
@@ -609,7 +608,7 @@ function drawTemp(
     const w = lineWeight(d) * fade(hr.time);
     if (d > 24 && hr.temperature !== undefined && w > 0.5) {
       const text = formatTemp(hr.temperature);
-      ctx.font = `10px ${UI_FONT}`;
+      ctx.font = `12px ${UI_FONT}`;
       const tw = ctx.measureText(text).width / 2 + 5;
       if (labels.tryPlace(X(hr.time), tw)) {
         ctx.globalAlpha = Math.min(1, w + 0.25);
@@ -728,8 +727,8 @@ function drawWind(
     if (hr.windGust !== undefined) gustPts.push({ x: X(hr.time), y: y(hr.windGust), w: w * 0.75 });
     if (hr.windSpeed !== undefined) speedPts.push({ x: X(hr.time), y: y(hr.windSpeed), w });
   }
-  strokeWeighted(ctx, gustPts, palette.gust, 1.1);
-  strokeWeighted(ctx, speedPts, palette.wind, 1.9);
+  strokeWeighted(ctx, gustPts, palette.gust, 1.4);
+  strokeWeighted(ctx, speedPts, palette.wind, 2.4);
 
   labels.reset();
   for (const hr of model.hours) {
@@ -787,7 +786,7 @@ function drawCloud(
         }
         return pts;
       };
-      strokeWeighted(ctx, mkPts(layers.low), palette.layerLo, 1.1);
+      strokeWeighted(ctx, mkPts(layers.low), palette.layerLo, 1.0);
       strokeWeighted(ctx, mkPts(layers.mid), palette.layerMid, 1, [7, 4]);
       strokeWeighted(ctx, mkPts(layers.high), palette.layerHi, 0.9, [2.5, 3]);
     }
@@ -827,10 +826,10 @@ function drawCloud(
     if (hr.uvIndex === undefined) continue;
     uvPts.push({ x: X(hr.time), y: bandY(band, hr.uvIndex / 11), w: fade(hr.time) * 0.95 });
   }
-  strokeWeighted(ctx, uvPts, palette.uv, 1.3);
+  strokeWeighted(ctx, uvPts, palette.uv, 1.6);
 
   labels.reset();
-  ctx.font = `9px ${UI_FONT}`;
+  ctx.font = `10px ${UI_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const hr of model.hours) {
@@ -866,7 +865,7 @@ function drawBandChrome(ctx: Ctx, palette: Palette, gutter: number, right: numbe
     ctx.fillStyle = palette.sub;
     ctx.font = `600 9px ${UI_FONT}`;
     ctx.fillText(title, 5, band.y0 + 4);
-    ctx.font = `8px ${UI_FONT}`;
+    ctx.font = `9px ${UI_FONT}`;
     legend.forEach((line, i) => {
       ctx.fillText(line, 5, band.y0 + 16 + i * 10, gutter - 8);
     });
@@ -890,7 +889,7 @@ function drawAxis(
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
 
-  ctx.font = `600 11px ${UI_FONT}`;
+  ctx.font = `600 12px ${UI_FONT}`;
   ctx.fillStyle = palette.fg;
   for (const g of model.dayGroups) {
     const x0 = Math.max(gutter, X(g.startSec));
@@ -900,7 +899,7 @@ function drawAxis(
   }
 
   const taken: number[] = [];
-  ctx.font = `10px ${UI_FONT}`;
+  ctx.font = `12px ${UI_FONT}`;
   for (const hr of model.hours) {
     if (density(hr.time) < 9) continue;
     const x = X(hr.time);
@@ -932,7 +931,7 @@ function drawNow(ctx: Ctx, palette: Palette, x: number, y0: number, cssH: number
   ctx.lineTo(x, cssH - 18);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.font = `600 10px ${UI_FONT}`;
+  ctx.font = `600 11px ${UI_FONT}`;
   ctx.fillStyle = palette.now;
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
