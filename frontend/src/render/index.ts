@@ -154,4 +154,4 @@ export { DARK, LIGHT, UI_FONT, iconStyle } from "./palette";
 export type { Palette } from "./palette";
 
 // For unit tests: step selection and day-label fit live in ./axis.
-export { HOUR_STEPS, dayLabelsFit, hourLabelTimes } from "./axis";
+export { HOUR_STEPS, dayLabelsRotate, hourLabelTimes } from "./axis";

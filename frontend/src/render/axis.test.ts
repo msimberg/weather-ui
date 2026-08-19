@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayLabelsFit, hourLabelTimes, HOUR_LABEL_MIN_PX } from "./axis";
+import { dayLabelsRotate, hourLabelTimes, HOUR_LABEL_MIN_PX } from "./axis";
 
 const TZ = "UTC";
 const DAY = 86_400;
@@ -17,38 +17,56 @@ function localHourOf(t: number): number {
   return new Date(t * 1000).getUTCHours();
 }
 
-describe("dayLabelsFit", () => {
-  it("returns true when every label fits its span with margin", () => {
-    expect(dayLabelsFit([40, 80], [60, 100])).toBe(true);
+describe("dayLabelsRotate", () => {
+  it("keeps everything horizontal when every label fits", () => {
+    expect(dayLabelsRotate([40, 80, 40], [60, 100, 60], 1)).toEqual([false, false, false]);
   });
 
-  it("rotates when more days would lose their label than keep it", () => {
-    expect(dayLabelsFit([40, 80, 80], [60, 90, 90])).toBe(false);
+  it("rotates only from the first failing day outward, per limb", () => {
+    // Days: [past2, past1, TODAY, fut1, fut2, fut3]. fut1 fails (tight),
+    // so fut1..fut3 rotate; the past limb and today stay horizontal.
+    const rotate = dayLabelsRotate(
+      [40, 40, 33, 40, 40, 40],
+      [80, 90, 200, 45, 44, 43],
+      2,
+    );
+    expect(rotate).toEqual([false, false, false, true, true, true]);
   });
 
-  it("ignores spans too narrow to label at all", () => {
-    expect(dayLabelsFit([40], [10])).toBe(true);
+  it("the frontier is limb-local: a failing future day does not touch the past", () => {
+    const rotate = dayLabelsRotate(
+      [40, 40, 33, 40, 40, 40], // furthest past fails, one future day fails
+      [45, 90, 200, 90, 90, 44],
+      2,
+    );
+    // past limb: index 0 fails -> indices 0..0 rotate (0 is the outermost
+    // past day); the day between the failure and today (index 1) stays.
+    expect(rotate).toEqual([true, false, false, false, false, true]);
   });
 
-  it("one narrow wing day does not rotate an otherwise wide row", () => {
-    // The fisheye-compressed far past day at 68.5 px cannot hold a 70 px
-    // label, but the other eleven days can: stay horizontal.
-    expect(dayLabelsFit(
-      [70, 70, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40],
-      [68, 80, 75, 80, 90, 100, 100, 110, 130, 160, 250, 290],
-    )).toBe(true);
+  it("a sliver day neither draws nor opens the frontier", () => {
+    // visW=10 < DAY_MIN_SPAN at the far future edge: no label, no rotation.
+    const rotate = dayLabelsRotate(
+      [40, 40, 33, 40, 40],
+      [80, 90, 200, 90, 10],
+      2,
+    );
+    expect(rotate).toEqual([false, false, false, false, false]);
   });
 
-  it("rotates when the wing days are the majority of tight days", () => {
-    // 7 tight days (labels need 82 px, spans 50-70) out of 12 -> row rotates.
-    expect(dayLabelsFit(
-      [70, 70, 70, 70, 70, 70, 70, 40, 40, 40, 40, 40],
-      [50, 55, 60, 62, 64, 66, 70, 100, 110, 130, 250, 290],
-    )).toBe(false);
+  it("everything rotates when the center day cannot fit", () => {
+    const rotate = dayLabelsRotate([40, 40, 40], [80, 30, 80], 1);
+    expect(rotate).toEqual([true, true, true]);
   });
 
-  it("a single tight day in a tiny view still rotates the row", () => {
-    expect(dayLabelsFit([40], [30])).toBe(false);
+  it("innermost failing past day rotates the whole past limb", () => {
+    // past1 (adjacent to today) fails -> it and everything further past rotate.
+    const rotate = dayLabelsRotate(
+      [40, 40, 33, 40, 40],
+      [200, 45, 200, 90, 90],
+      2,
+    );
+    expect(rotate).toEqual([true, true, false, false, false]);
   });
 });
 
