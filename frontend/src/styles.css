@@ -246,9 +246,9 @@ button.icon-btn {
   background: transparent;
   color: var(--sub);
   font: 600 10px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  text-orientation: upright;
   text-align: center;
   cursor: help;
   white-space: nowrap;
