@@ -509,6 +509,12 @@ footer .warn {
   min-height: 100vh;
 }
 
+/* In compact mode the wrap keeps its inline slider-set height even in
+   focus mode; an id-scoped rule is needed to beat the 100vh one above. */
+#root.focus .timeline-wrap.compact {
+  min-height: 0;
+}
+
 /* Compact mode: the wrap sets its own height (inline, from the settings
    slider) and the column distributes the leftover viewport space evenly
    above the header and below the footer. So the chart floats in the middle
