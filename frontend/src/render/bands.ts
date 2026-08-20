@@ -562,31 +562,42 @@ export function drawCloud(
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // One UV value label per constant-value run, placed in the horizontal
-  // middle of the run (so it never sits on a step edge) and just above the
-  // line, so it never overlaps the line itself.
+  // One UV max label per day, like the temp H/L and wind max-gust markers:
+  // a single value at the day's peak, no dot. The UV plateau usually spans
+  // a few midday hours, so the label centers on the whole max run (start of
+  // the first max hour to the next value change) rather than a raw sample.
   labels.reset();
   ctx.font = FONT_DATA;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
-  let i = 0;
-  while (i < uvPts.length) {
-    let j = i + 1;
-    while (j < uvPts.length && uvPts[j].v === uvPts[i].v) j++;
-    // The horizontal run extends from uvPts[i].x to the next step edge
-    // (uvPts[j].x, where the value changes); center the label on that
-    // span, not on the points, so it never sits at a step start.
-    const xEnd = j < uvPts.length ? uvPts[j].x : uvPts[j - 1].x;
-    const cx = (uvPts[i].x + xEnd) / 2;
-    const v = uvPts[i].v;
-    if (v >= UV_LABEL_MIN && labels.tryPlace(cx, 8)) {
-      const text = String(Math.round(v));
-      ctx.globalAlpha = fade(uvPts[i].t);
-      labelHalo(ctx, text, cx, uvY(v) - 2, bg);
-      ctx.fillStyle = palette.sub;
-      ctx.fillText(text, cx, uvY(v) - 2);
+  for (const g of model.dayGroups) {
+    // Hours belonging to this day (index-based, not position-based, so the
+    // fisheye warp cannot misassign boundary hours).
+    const dayPts = uvPts.filter((p) => p.t >= g.startSec && p.t < g.endSec);
+    if (dayPts.length === 0) continue;
+    let maxV = -1;
+    for (const p of dayPts) if (p.v > maxV) maxV = p.v;
+    if (maxV < UV_LABEL_MIN) continue;
+    const firstMax = dayPts.find((p) => p.v === maxV);
+    if (!firstMax) continue;
+    let runEndX = firstMax.x;
+    const gi = uvPts.indexOf(firstMax);
+    let k = gi;
+    while (k < uvPts.length && uvPts[k].v === maxV && uvPts[k].t < g.endSec) {
+      runEndX = k + 1 < uvPts.length ? uvPts[k + 1].x : uvPts[k].x;
+      k++;
     }
-    i = j;
+    const cx = (firstMax.x + runEndX) / 2;
+    const dayW = Math.abs(X(g.endSec) - X(g.startSec));
+    // Same atomic gate as the wind max-gust label: a day squeezed below the
+    // label width loses its marker entirely; the step profile still shows.
+    if (dayW <= 34) continue;
+    if (!labels.tryPlace(cx, 8)) continue;
+    const text = String(Math.round(maxV));
+    ctx.globalAlpha = Math.min(1, fade(firstMax.t) + AGGREGATE_MIN_ALPHA);
+    labelHalo(ctx, text, cx, uvY(maxV) - 2, bg);
+    ctx.fillStyle = palette.sub;
+    ctx.fillText(text, cx, uvY(maxV) - 2);
   }
   ctx.globalAlpha = 1;
 }
