@@ -57,7 +57,9 @@ export function App() {
               <span>
                 {settings().provider === "pirateweather"
                   ? "data: pirateweather.net (model output, past days from archives rather than station observations)"
-                  : "data: open-meteo.com (CC BY 4.0; best-match national models, ICON-CH 1-2 km in Switzerland)"}
+                  : settings().provider === "meteoblue"
+                    ? "data: meteoblue.com (forecast) + open-meteo.com (fill)"
+                    : "data: open-meteo.com (CC BY 4.0; best-match national models, ICON-CH 1-2 km in Switzerland)"}
               </span>
             </>
           )}

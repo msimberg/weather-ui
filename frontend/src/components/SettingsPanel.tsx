@@ -46,6 +46,10 @@ export function SettingsPanel() {
       note: "Open-Meteo best-match (MeteoSwiss ICON-CH 1-2 km in Switzerland). No API key needed.",
     },
     {
+      id: "meteoblue",
+      note: "meteoblue free tier: accurate AI blend as backbone, sun/moon/cloud details from Open-Meteo. ~8000 credits per view of a 10M yearly pool; history limited to 4 days back.",
+    },
+    {
       id: "pirateweather",
       note: "Pirate Weather (Dark Sky): multi-model blend with richer US fields; needs a server-side API key.",
     },
@@ -184,7 +188,7 @@ export function SettingsPanel() {
             <select
               value={settings().provider}
               onChange={(e) =>
-                setSettings({ provider: e.currentTarget.value as "openmeteo" | "pirateweather" })
+                setSettings({ provider: e.currentTarget.value as "openmeteo" | "pirateweather" | "meteoblue" })
               }
             >
               <For each={PROVIDERS}>

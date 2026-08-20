@@ -7,15 +7,24 @@ directions. There are no separate hourly/daily/weekly views. One axis,
 past days fading into lower detail on the left, forecast days compressing
 into daily summary bands on the right.
 
-Data comes from a selectable provider: [Open-Meteo](https://open-meteo.com)
-(the default; best-match national models with no key, e.g. MeteoSwiss
-ICON-CH at 1-2 km over Switzerland) or [Pirate
-Weather](https://pirateweather.net) (Dark Sky compatible; multi-model
-blend with richer US fields, requires an API key). The backend translates
-both into one Dark Sky-shaped document, so the frontend pipeline is
-provider-agnostic. Location search comes from OpenStreetMap Nominatim,
-and altitude-layered cloud cover comes from Open-Meteo (no key);
-with provider=openmeteo the cloud layers ride the same request.
+Data comes from a selectable provider:
+
+- **Open-Meteo** (default): best-match national models, no key, e.g.
+  MeteoSwiss ICON-CH at 1-2 km over Switzerland. Free for non-commercial
+  use, ~10k calls/day.
+- **meteoblue**: their AI-blend model as the backbone (temperature,
+  precipitation, wind, UV), with Open-Meteo filling everything the free
+  tier lacks (cloud layers, gusts, visibility, sun/moon times, nowcast).
+  Needs `METEOBLUE_API_KEY`. Free tier: max 1h resolution, 4 days of
+  history, and ~8000 credits per view out of a 10M/year pool (~1200
+  views/year), so keep auto-refresh restrained with it.
+- **Pirate Weather**: Dark Sky compatible multi-model blend with richer
+  US fields (minutely nowcast, alerts); needs `PIRATE_WEATHER_API_KEY`.
+
+The backend translates each provider into one Dark Sky-shaped document
+(meteoblue's is a meteoblue/Open-Meteo merge), so the frontend pipeline
+is provider-agnostic. Location search comes from OpenStreetMap
+Nominatim.
 ## What the timeline shows
 
 1. **Precipitation**: hourly intensity bars tiled as a histogram
@@ -72,10 +81,10 @@ Pirate-specific and hidden for provider=openmeteo.
 ## Architecture
 
 - `src/`: Rust (axum) server. Fetches from the selected provider
-  (`openmeteo.rs` translates Open-Meteo into the shared shape;
-  `pirate.rs` + `merge.rs` merge forecast + per-past-day timemachine
-  responses), caches results, proxies Nominatim geocoding, serves the
-  frontend.
+  (`openmeteo.rs`, `meteoblue.rs`, and `pirate.rs` + `merge.rs` each
+  produce the shared Dark Sky shape; meteoblue overlays its fields onto
+  an Open-Meteo document), caches results, proxies Nominatim geocoding,
+  serves the frontend.
 - `frontend/`: Solid + Vite + TypeScript. The timeline is one
   DPR-aware canvas; Solid renders only the chrome (search, settings,
   current conditions, alerts, tooltip).
@@ -101,6 +110,10 @@ comfortable and quota exhaustion.
   error field; `minutely` is 15-minute data (next 2 hours only), alerts
   are always empty, and the precip error halo is absent. Conversely,
   Open-Meteo needs no key and is one call per view.
+- The meteoblue free tier has no cloud-cover layers, no gusts, no
+  visibility, no sun/moon data, no alerts, and no nowcast; all of these
+  are filled from Open-Meteo, and meteoblue fields win where both have
+  them. History is capped at 4 days back (`historyDays` limit).
 - The backend API keeps Pirate Weather field names verbatim; the
   frontend renders only what is present (field coverage varies by model
   source and location).
@@ -121,8 +134,8 @@ All routes are unauthenticated and assume a trusted network (see
   Merged document: Dark Sky-shaped; `hourly.data` covers past days plus
   168 forecast hours, `daily.data` covers past days plus 7 forecast days.
   `meta.warnings` lists partially failed past-day loads. `provider` is
-  `openmeteo` (default) or `pirateweather`; selecting pirateweather
-  without a configured `PIRATE_WEATHER_API_KEY` returns 503.
+  `openmeteo` (default), `meteoblue`, or `pirateweather`; selecting a
+  provider whose API key is not configured on the server returns 503.
 - `GET /api/geocode?q=&lang=` -> `[{name, lat, lon}]`
 - `GET /api/reverse?lat=&lon=&lang=` -> `{name, lat, lon}`
 - `GET /api/health`
@@ -134,6 +147,7 @@ Environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PIRATE_WEATHER_API_KEY` | unset | Pirate Weather API key; optional -- only required for provider=pirateweather requests |
+| `METEOBLUE_API_KEY` | unset | meteoblue API key (free-tier trial, 10M credits/year); only required for provider=meteoblue |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8087` | Port |
 | `WEATHER_UI_STATIC_DIR` | `./frontend/dist` | Built frontend to serve |
@@ -146,7 +160,7 @@ Environment variables:
 ```sh
 docker build -t weather-ui .
 docker run --rm -p 8087:8087 weather-ui
-# add -e PIRATE_WEATHER_API_KEY=... only if you use the pirate provider
+# add -e PIRATE_WEATHER_API_KEY=... / -e METEOBLUE_API_KEY=... for those providers
 ```
 
 or

@@ -1,6 +1,7 @@
 mod cache;
 mod config;
 mod merge;
+mod meteoblue;
 mod openmeteo;
 mod pirate;
 mod routes;
@@ -12,6 +13,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::cache::Cache;
 use crate::config::Config;
+use crate::meteoblue::MeteoBlueClient;
 use crate::openmeteo::OpenMeteoClient;
 use crate::pirate::PirateClient;
 use crate::routes::AppState;
@@ -41,7 +43,16 @@ async fn main() {
         );
     }
     let om = OpenMeteoClient::new(PirateClient::user_agent(config.contact.as_deref()));
-    let state = AppState::new(client, om, Arc::new(Cache::new()));
+    let mb = MeteoBlueClient::new(
+        config.meteoblue_key.clone(),
+        PirateClient::user_agent(config.contact.as_deref()),
+    );
+    if !mb.has_key() {
+        tracing::warn!(
+            "METEOBLUE_API_KEY not set; provider=meteoblue requests will fail"
+        );
+    }
+    let state = AppState::new(client, om, mb, Arc::new(Cache::new()));
     let app = routes::router(state, &config.static_dir);
 
     let addr = format!("{}:{}", config.host, config.port);

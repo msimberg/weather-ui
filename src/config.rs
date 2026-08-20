@@ -7,6 +7,9 @@ pub struct Config {
     /// A `provider=pirateweather` request without a key fails at dispatch
     /// time with a clear error instead of refusing to start.
     pub api_key: Option<String>,
+    /// Optional: only needed for provider=meteoblue (free tier, 8000
+    /// credits per basic-1h call out of a 10M yearly pool).
+    pub meteoblue_key: Option<String>,
     pub host: String,
     pub port: u16,
     pub static_dir: PathBuf,
@@ -36,6 +39,9 @@ impl Config {
         let api_key = env::var("PIRATE_WEATHER_API_KEY")
             .ok()
             .filter(|k| !k.trim().is_empty());
+        let meteoblue_key = env::var("METEOBLUE_API_KEY")
+            .ok()
+            .filter(|k| !k.trim().is_empty());
         let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let port = match env::var("PORT") {
             Ok(v) => v.parse::<u16>().map_err(|_| ConfigError::InvalidPort(v))?,
@@ -49,6 +55,7 @@ impl Config {
         let contact = env::var("NOMINATIM_CONTACT").ok();
         Ok(Config {
             api_key,
+            meteoblue_key,
             host,
             port,
             static_dir,

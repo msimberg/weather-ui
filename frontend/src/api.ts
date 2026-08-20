@@ -17,7 +17,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export function fetchWeather(
   location: CurrentLocation,
-  provider: "openmeteo" | "pirateweather",
+  provider: "openmeteo" | "pirateweather" | "meteoblue",
   pastDays: number,
   units: Units,
   lang: string,

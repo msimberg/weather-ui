@@ -4,7 +4,8 @@ services:
     ports:
       - "${PORT:-8087}:8087"
     environment:
-      # Optional: only needed when the UI is switched to the Pirate provider.
+      # Optional: only needed when the UI is switched to those providers.
       PIRATE_WEATHER_API_KEY: ${PIRATE_WEATHER_API_KEY:-}
+      METEOBLUE_API_KEY: ${METEOBLUE_API_KEY:-}
       RUST_LOG: weather_ui=info,tower_http=info
     restart: unless-stopped

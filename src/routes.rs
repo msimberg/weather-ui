@@ -17,6 +17,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::cache::Cache;
 use crate::merge;
+use crate::meteoblue::{self, MeteoBlueClient};
 use crate::openmeteo::{self, OpenMeteoClient};
 use crate::pirate::{PirateClient, UpstreamError};
 
@@ -25,7 +26,7 @@ const FORECAST_TTL: Duration = Duration::from_secs(600);
 const GEOCODE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 const SECS_PER_DAY: i64 = 86_400;
 const UNITS: [&str; 5] = ["si", "us", "ca", "uk", "uk2"];
-const PROVIDERS: [&str; 2] = ["openmeteo", "pirateweather"];
+const PROVIDERS: [&str; 3] = ["openmeteo", "pirateweather", "meteoblue"];
 
 /// Model family names accepted by Pirate Weather's exclude parameter.
 const MODELS: [&str; 12] = [
@@ -37,12 +38,18 @@ const MODELS: [&str; 12] = [
 pub struct AppState {
     client: PirateClient,
     om: OpenMeteoClient,
+    mb: MeteoBlueClient,
     cache: Arc<Cache>,
 }
 
 impl AppState {
-    pub fn new(client: PirateClient, om: OpenMeteoClient, cache: Arc<Cache>) -> AppState {
-        AppState { client, om, cache }
+    pub fn new(
+        client: PirateClient,
+        om: OpenMeteoClient,
+        mb: MeteoBlueClient,
+        cache: Arc<Cache>,
+    ) -> AppState {
+        AppState { client, om, mb, cache }
     }
 }
 
@@ -133,7 +140,8 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         return bad_request("lang must be a short language code").into_response();
     }
     if !PROVIDERS.contains(&provider.as_str()) {
-        return bad_request("provider must be one of openmeteo, pirateweather").into_response();
+        return bad_request("provider must be one of openmeteo, pirateweather, meteoblue")
+            .into_response();
     }
 
     let exclude = q.exclude.unwrap_or_default();
@@ -170,6 +178,47 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
                 return upstream_failure(&e).into_response();
             }
         }
+    } else if provider == "meteoblue" {
+        // meteoblue backbone + open-meteo fill, fetched concurrently.
+        if !state.mb.has_key() {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": "meteoblue provider selected but METEOBLUE_API_KEY is not configured on the server"
+                })),
+            )
+                .into_response();
+        }
+        let mb_client = state.mb.clone();
+        let om_client = state.om.clone();
+        let om_units = units.clone();
+        let (mb_result, om_result) = tokio::join!(
+            mb_client.forecast(q.lat, lon, past_days),
+            om_client.forecast(q.lat, lon, past_days, &om_units),
+        );
+        let mb_doc = match mb_result {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(error = %e, "meteoblue request failed");
+                return upstream_failure(&e).into_response();
+            }
+        };
+        let mut warnings: Vec<String> = Vec::new();
+        let om_doc = match om_result {
+            Ok(v) => openmeteo::to_dark_sky(&v, &units),
+            Err(e) => {
+                tracing::warn!(error = %e, "open-meteo fill failed for meteoblue provider");
+                warnings.push(
+                    "cloud layers, gusts, and sun times unavailable (Open-Meteo fill failed)"
+                        .to_string(),
+                );
+                // Degrade to a meteoblue-only document: synthesize an empty
+                // host doc so merge() still produces a usable shape.
+                openmeteo::to_dark_sky(&json!({}), &units)
+            }
+        };
+        let doc = meteoblue::merge(&mb_doc, &om_doc, &units);
+        merge::merge(&doc, &[], warnings)
     } else {
         if !state.client.has_key() {
             return (

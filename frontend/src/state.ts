@@ -9,7 +9,7 @@ import type { CurrentLocation, Units, WeatherPayload } from "./types";
 export interface Settings {
   units: Units;
   /** Forecast data provider; the backend translates both into one shape. */
-  provider: "openmeteo" | "pirateweather";
+  provider: "openmeteo" | "pirateweather" | "meteoblue";
   theme: "auto" | "light" | "dark";
   /** How many days of history the axis shows; each costs one upstream call on a cold cache. */
   pastDays: number;
@@ -110,7 +110,7 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
     out.compactHeightVh = 0.62;
   }
   out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
-  if (out.provider !== "openmeteo" && out.provider !== "pirateweather") {
+  if (out.provider !== "openmeteo" && out.provider !== "pirateweather" && out.provider !== "meteoblue") {
     out.provider = DEFAULT_SETTINGS.provider;
   }
   return out;
