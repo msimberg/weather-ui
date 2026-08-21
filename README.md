@@ -10,6 +10,8 @@
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](./license)
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fmsimberg%2Fweather--ui-informational)](https://github.com/msimberg/weather-ui/pkgs/container/weather-ui)
 
+![weather-ui showing the fisheye timeline: past days compressing left, forecast days right, with stacked bands for precipitation, cloud cover/UV, wind, and temperature](docs/screenshot.png)
+
 A weather dashboard built around a single continuous time axis with a
 focus+context (fisheye) warp: the hours around "now" are spread out and
 shown in full detail, and data compresses smoothly with distance in both
