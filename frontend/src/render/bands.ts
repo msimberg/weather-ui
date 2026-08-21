@@ -441,9 +441,9 @@ export function drawWind(
 // positions of the band; coverages smear with a wider falloff so the mass
 // reads as one continuous gray profile, not three stacked rows.
 const LANE_CENTERS = [0.16, 0.5, 0.84] as const;
-// Vertical smear half-width (fraction of band height). Doubled from 0.22:
-// lanes overlap freely and the mass softens toward the band edges.
-const LANE_HALF_WIDTH = 0.44;
+// Vertical smear half-width (fraction of band height). 0.33 sits between
+// the original 0.22 (lanes read as separate rows) and 0.44 (fully soft).
+const LANE_HALF_WIDTH = 0.33;
 // Offscreen buffer resolution: one column per 3 px, 40 altitude rows; drawn
 // scaled up with smoothing for a single bilinear-blurred mass.
 const CLOUD_ROWS = 40;
