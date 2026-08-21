@@ -3,7 +3,8 @@ name: release
 on:
   # Manual tag pushes (`git tag v0.1.0 && git push --tags`).
   push:
-    tags: ["v*"]
+    # Both plain vX.Y.Z and release-please manifest-style weather-ui-vX.Y.Z.
+    tags: ["v*", "weather-ui-v*"]
   # Called by release-please.yml when it cuts a release; GITHUB_TOKEN
   # pushes do not cascade-trigger the tags workflow, hence the call.
   workflow_call:
