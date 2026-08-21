@@ -2,7 +2,7 @@
 # runtime image. The final image is ~25 MB (alpine + one static binary +
 # dist assets) and contains no toolchain.
 
-FROM node:24-alpine3.24 AS frontend
+FROM node:26-alpine3.24 AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
