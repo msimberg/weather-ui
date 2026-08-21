@@ -1,4 +1,4 @@
-> Human comment: This repo is obviously agent-generated and exists because
+> Human comment: This repo is obviously agent-generated and exists because I
 > wanted to explore the "fisheye" visualization for a weather forecast. I
 > was bothered by forecasts either giving a good long term view or a good
 > short term view, but never both together.
