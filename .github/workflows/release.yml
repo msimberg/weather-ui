@@ -181,6 +181,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ inputs.tag_name || github.ref_name }}
     steps:
+      # gh release create/update needs a repo context; checkout provides it.
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v6
         with:
           pattern: binary-*
