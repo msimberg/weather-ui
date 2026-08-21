@@ -1,3 +1,8 @@
+> Human comment: This repo is obviously agent-generated and exists because
+> wanted to explore the "fisheye" visualization for a weather forecast. I
+> was bothered by forecasts either giving a good long term view or a good
+> short term view, but never both together.
+
 # weather-ui
 
 [![CI](https://github.com/msimberg/weather-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/msimberg/weather-ui/actions/workflows/ci.yml)
