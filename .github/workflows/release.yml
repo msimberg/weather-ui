@@ -25,15 +25,20 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
       - id: v
         run: |
           tag="${{ inputs.tag_name || github.ref_name }}"
           crate="$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "//;s/"//')"
+          # release-please (manifest mode) tags with a component prefix:
+          # weather-ui-v1.2.3; manual tags are plain v1.2.3. Normalize.
+          stripped="${tag#weather-ui-}"
           echo "tag=$tag crate=$crate"
-          test "v$crate" = "$tag" || { echo "tag $tag does not match Cargo.toml version $crate" >&2; exit 1; }
+          test "v$crate" = "$stripped" || { echo "tag $tag does not match Cargo.toml version $crate" >&2; exit 1; }
           echo "version=$crate" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   binaries:
     name: static binary (${{ matrix.name }})
@@ -179,7 +184,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG: ${{ inputs.tag_name || github.ref_name }}
+      TAG: ${{ needs.version-check.outputs.tag }}
     steps:
       # gh release create/update needs a repo context; checkout provides it.
       - uses: actions/checkout@v6
