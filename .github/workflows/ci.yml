@@ -17,7 +17,7 @@ jobs:
     name: rust fmt+clippy+test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # clippy is installed automatically by rustup; the toolchain is
       # whatever stable is current on the runner, matching local builds.
@@ -40,7 +40,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -58,7 +58,7 @@ jobs:
     name: docker build (smoke, no push)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v3
 
