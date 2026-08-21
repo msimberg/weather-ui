@@ -324,7 +324,11 @@ async fn fetch_pirate(
 }
 
 async fn health() -> Json<Value> {
-    Json(json!({ "ok": true }))
+    Json(json!({
+        "ok": true,
+        // Lets a deploy verify which version is actually serving.
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
 }
 
 async fn geocode(State(state): State<AppState>, Query(q): Query<GeoQuery>) -> Response {

@@ -1,5 +1,10 @@
 # weather-ui
 
+[![CI](https://github.com/msimberg/weather-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/msimberg/weather-ui/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/msimberg/weather-ui?sort=semver)](https://github.com/msimberg/weather-ui/releases)
+[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](./license)
+[![image](https://img.shields.io/badge/image-ghcr.io%2Fmsimberg%2Fweather--ui-informational)](https://github.com/msimberg/weather-ui/pkgs/container/weather-ui)
+
 A weather dashboard built around a single continuous time axis with a
 focus+context (fisheye) warp: the hours around "now" are spread out and
 shown in full detail, and data compresses smoothly with distance in both
@@ -155,7 +160,26 @@ Environment variables:
 | `NOMINATIM_CONTACT` | unset | Added to the Nominatim user agent, e.g. an email |
 | `RUST_LOG` | `weather_ui=info,tower_http=info` | Log filter |
 
-## Run with Docker
+## Run the released image
+
+Multi-arch (amd64 + arm64) images are published to GHCR from tagged
+releases:
+
+```console
+docker run --rm -p 8087:8087 \
+  -e METEOBLUE_API_KEY=... \    # optional, needed only for that provider
+  -e PIRATE_WEATHER_API_KEY=... # optional
+  ghcr.io/msimberg/weather-ui:latest
+```
+
+Static musl binaries (x86_64 and arm64, fully self-contained) are
+attached to each GitHub release for systems without a container runtime.
+
+Releases are automated: conventional commits accumulate into a
+release-please PR, and merging that PR tags the version, builds the
+binaries and images, and generates CHANGELOG.md.
+
+## Build from source
 
 ```sh
 docker build -t weather-ui .
@@ -197,5 +221,5 @@ cd frontend && npm test   # frontend: axis warps/inverses, timezone day math, fo
 
 The server has no authn/authz and is meant for localhost or a trusted
 LAN. If exposed further, put it behind a reverse proxy with TLS and
-access control: any visitor can fetch weather (consuming your Pirate
-Weather quota) but cannot see the API key itself.
+access control: any visitor can fetch weather (consuming your provider
+quote/credits) but cannot see the API keys themselves.
