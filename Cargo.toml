@@ -20,7 +20,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "gzip",
   "rustls-tls-webpki-roots",
 ] }
-tower-http = { version = "0.6", features = [
+tower-http = { version = "0.7", features = [
   "fs",
   "compression-gzip",
   "compression-br",
