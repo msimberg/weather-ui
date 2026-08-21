@@ -139,7 +139,7 @@ function drawDividers(
   L: Layout,
 ) {
   ctx.strokeStyle = palette.grid;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = palette.lineScale;
   ctx.setLineDash([5, 4]);
   for (const g of model.dayGroups) {
     const x = X(g.startSec);
@@ -172,7 +172,7 @@ function fadePast(ctx: Ctx, L: Layout, Xnow: number) {
 // For unit tests: step selection and day-label fit live in ./axis.
 export { dayLabelsRotate, HOUR_STEPS, hourLabelTimes } from "./axis";
 export type { Palette } from "./palette";
-export { DARK, iconStyle, LIGHT, UI_FONT } from "./palette";
+export { DARK, DARK_HC, iconStyle, LIGHT, LIGHT_HC, UI_FONT } from "./palette";
 export type { BandRect, Layout };
 // Re-exports so callers (state, components) have one import surface.
 export { bandLayout, canvasRight, leftGutter, RIGHT_PAD, TITLE_W };

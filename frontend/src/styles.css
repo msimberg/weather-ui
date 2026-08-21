@@ -24,6 +24,26 @@
   color-scheme: light;
 }
 
+/* High contrast: primaries go to true black/white, weight shifts up. */
+[data-hc="true"] {
+  --bg: #000000;
+  --fg: #ffffff;
+  --sub: #c4ccd8;
+  --panel: #0c0e11;
+  --border: rgba(255, 255, 255, 0.35);
+  --chip: rgba(255, 255, 255, 0.1);
+  font-weight: 500;
+}
+
+[data-theme="light"][data-hc="true"] {
+  --bg: #ffffff;
+  --fg: #000000;
+  --sub: #33383f;
+  --panel: #f4f4f2;
+  --border: rgba(0, 0, 0, 0.4);
+  --chip: rgba(0, 0, 0, 0.09);
+}
+
 * {
   box-sizing: border-box;
 }

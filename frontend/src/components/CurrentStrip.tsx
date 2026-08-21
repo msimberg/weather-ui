@@ -1,13 +1,16 @@
 import { createEffect, For, Show } from "solid-js";
 import { compass, formatPercent, formatTemp, visibilityUnit, windUnit } from "../format";
 import { drawIcon, type IconStyle } from "../icons";
-import { DARK, iconStyle, LIGHT } from "../render";
+import { DARK, DARK_HC, iconStyle, LIGHT, LIGHT_HC } from "../render";
 import { model, nowTick, resolvedTheme, settings } from "../state";
 import { formatClock, formatFull } from "../time";
 import type { HourPoint, Units } from "../types";
 
-const currentIconStyle = (): IconStyle =>
-  resolvedTheme() === "light" ? iconStyle(LIGHT) : iconStyle(DARK);
+const currentIconStyle = (): IconStyle => {
+  const light = resolvedTheme() === "light";
+  const hc = settings().highContrast;
+  return light ? iconStyle(hc ? LIGHT_HC : LIGHT) : iconStyle(hc ? DARK_HC : DARK);
+};
 
 export function IconCanvas(props: { name: string | undefined; size: number }) {
   let ref!: HTMLCanvasElement;

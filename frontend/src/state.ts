@@ -11,6 +11,8 @@ export interface Settings {
   /** Forecast data provider; the backend translates both into one shape. */
   provider: "openmeteo" | "pirateweather" | "meteoblue";
   theme: "auto" | "light" | "dark";
+  /** True-black/true-white primaries and slightly bolder strokes. */
+  highContrast: boolean;
   /** How many days of history the axis shows; each costs one upstream call on a cold cache. */
   pastDays: number;
   /** Display clamp on the future limb; the API always returns 7 days. */
@@ -44,6 +46,7 @@ const DEFAULT_SETTINGS: Settings = {
   units: "si",
   provider: "openmeteo",
   theme: "auto",
+  highContrast: false,
   pastDays: 4,
   futureDays: 7,
   warpFn: DEFAULT_WARP.fn,
@@ -113,6 +116,7 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
     out.compactHeightVh = 0.62;
   }
   out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
+  if (typeof out.highContrast !== "boolean") out.highContrast = false;
   if (
     out.provider !== "openmeteo" &&
     out.provider !== "pirateweather" &&
@@ -168,6 +172,14 @@ export function resolvedTheme(): "light" | "dark" {
 
 createEffect(() => {
   document.documentElement.dataset.theme = resolvedTheme();
+});
+
+export function isHighContrast(): boolean {
+  return settings().highContrast;
+}
+
+createEffect(() => {
+  document.documentElement.dataset.hc = String(settings().highContrast);
 });
 
 let fetchSeq = 0;

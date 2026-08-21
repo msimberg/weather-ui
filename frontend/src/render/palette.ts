@@ -20,6 +20,15 @@ export interface Palette {
   ice: string;
   wind: string;
   cloudInk: string;
+  /** Stroke-width multiplier; high contrast draws slightly bolder. */
+  lineScale: number;
+  /** When true, painters use heavier font weights. */
+  boldText: boolean;
+}
+
+/** Build a canvas font string for UI_FONT. */
+export function uiFont(weight: number, px: number): string {
+  return `${weight} ${px}px ${UI_FONT}`;
 }
 
 const FG = "#17191d";
@@ -39,6 +48,8 @@ export const LIGHT: Palette = {
   ice: "#8b96a3",
   wind: FG,
   cloudInk: FG,
+  lineScale: 1,
+  boldText: false,
 };
 
 const FG_DARK = "#e6e3de";
@@ -57,6 +68,46 @@ export const DARK: Palette = {
   ice: "#a3adbd",
   wind: FG_DARK,
   cloudInk: FG_DARK,
+  lineScale: 1,
+  boldText: false,
+};
+
+// High-contrast variants: primaries go to true black / true white, other
+// shades keep their relationships but gain separation.
+export const LIGHT_HC: Palette = {
+  bg: "#ffffff",
+  fg: "#000000",
+  sub: "#33383f",
+  grid: "rgba(0, 0, 0, 0.3)",
+  night: "rgba(0, 0, 0, 0.1)",
+  now: "#000000",
+  temp: "#000000",
+  hiLo: "#000000",
+  rain: "#000000",
+  snow: "#33383f",
+  ice: "#556068",
+  wind: "#000000",
+  cloudInk: "#000000",
+  lineScale: 1.3,
+  boldText: true,
+};
+
+export const DARK_HC: Palette = {
+  bg: "#000000",
+  fg: "#ffffff",
+  sub: "#c4ccd8",
+  grid: "rgba(255, 255, 255, 0.35)",
+  night: "rgba(255, 255, 255, 0.09)",
+  now: "#ffffff",
+  temp: "#ffffff",
+  hiLo: "#ffffff",
+  rain: "#ffffff",
+  snow: "#ffffff",
+  ice: "#d5dce6",
+  wind: "#ffffff",
+  cloudInk: "#ffffff",
+  lineScale: 1.3,
+  boldText: true,
 };
 
 export function iconStyle(p: Palette): IconStyle {

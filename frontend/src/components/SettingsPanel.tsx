@@ -174,6 +174,14 @@ export function SettingsPanel() {
             </select>
           </label>
           <label>
+            High contrast
+            <input
+              type="checkbox"
+              checked={settings().highContrast}
+              onChange={(e) => setSettings({ highContrast: e.currentTarget.checked })}
+            />
+          </label>
+          <label>
             Summary language
             <select
               value={settings().lang}

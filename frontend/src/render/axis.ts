@@ -5,13 +5,13 @@ import type { DayGroup, Prepared } from "../prepare";
 import { formatHour, localHour } from "../time";
 import type { BandRect, Layout } from "./layout";
 import { bandY, type Ctx, interpAt, labelHalo } from "./paint";
-import { type Palette, UI_FONT } from "./palette";
+import { type Palette, uiFont } from "./palette";
 
 // --- constants --------------------------------------------------------------
 
-const DAY_FONT = `600 11px ${UI_FONT}`;
-const HOUR_FONT = `11px ${UI_FONT}`;
-const NOW_FONT = `600 10px ${UI_FONT}`;
+const dayFont = (bold: boolean) => uiFont(bold ? 700 : 600, 11);
+const hourFont = (bold: boolean) => uiFont(bold ? 500 : 400, 11);
+const nowFont = (bold: boolean) => uiFont(bold ? 700 : 600, 10);
 
 // Distance from the band edge to each label baseline. Day labels sit outside
 // (farther from the bands) the hour labels, on both ends.
@@ -97,7 +97,7 @@ function drawDayRow(
   const stripY1 = belowBand ? canvasH : L.bandsTop;
   ctx.rect(L.gutter, stripY0, L.right - L.gutter, stripY1 - stripY0);
   ctx.clip();
-  ctx.font = DAY_FONT;
+  ctx.font = dayFont(palette.boldText);
   ctx.fillStyle = palette.fg;
 
   for (let i = 0; i < model.dayGroups.length; i++) {
@@ -240,7 +240,7 @@ function drawHourRow(
   const stripY1 = belowBand ? canvasH : L.bandsTop;
   ctx.rect(L.gutter, stripY0, L.right - L.gutter, stripY1 - stripY0);
   ctx.clip();
-  ctx.font = HOUR_FONT;
+  ctx.font = hourFont(palette.boldText);
   ctx.textAlign = "center";
   ctx.textBaseline = belowBand ? "top" : "bottom";
   const dir = belowBand ? 1 : -1;
@@ -249,7 +249,7 @@ function drawHourRow(
     const x = X(hr.time);
     if (x < L.gutter + 2 || x > L.right - 2) continue;
     ctx.strokeStyle = palette.grid;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = palette.lineScale;
     ctx.beginPath();
     const t = belowBand ? L.bandsBottom + 2 : L.bandsTop - 2;
     ctx.moveTo(x, t);
@@ -276,7 +276,7 @@ export function drawAxis(
 
   // Midnight (long) and noon (short) ticks anchoring each day on both strips.
   ctx.strokeStyle = palette.sub;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = palette.lineScale;
   for (const g of model.dayGroups) {
     const x0 = X(g.startSec);
     const xn = X((g.startSec + g.endSec) / 2);
@@ -297,7 +297,7 @@ export function drawAxis(
   }
 
   // Day labels: limb-wise rotation frontier (see dayLabelsRotate).
-  ctx.font = DAY_FONT;
+  ctx.font = dayFont(palette.boldText);
   const visWidths = model.dayGroups.map(
     (g) => Math.min(right, X(g.endSec)) - Math.max(gutter, X(g.startSec)),
   );
@@ -331,7 +331,7 @@ export function drawCurrentDayHours(
   const today = model.dayGroups.find((g) => g.startSec <= nowSec && nowSec < g.endSec);
   if (!today) return;
   ctx.strokeStyle = palette.grid;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = palette.lineScale;
   ctx.globalAlpha = 0.6;
   ctx.setLineDash([2, 4]);
   for (const hr of model.hours) {
@@ -351,7 +351,7 @@ export function drawCurrentDayHours(
 export function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bottom: number) {
   ctx.strokeStyle = palette.now;
   ctx.globalAlpha = 0.9;
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = 1.6 * palette.lineScale;
   ctx.beginPath();
   ctx.moveTo(x, top);
   ctx.lineTo(x, bottom);
@@ -361,7 +361,7 @@ export function drawNow(ctx: Ctx, palette: Palette, x: number, top: number, bott
   // "now" flag centered on the line, just inside the top of the band stack
   // (never collides with the hour/day label rows, which live above the
   // bands), with a bg halo so it stays legible over any band content.
-  ctx.font = NOW_FONT;
+  ctx.font = nowFont(palette.boldText);
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   labelHalo(ctx, "now", x, top + 2, palette.bg);
@@ -382,7 +382,7 @@ export function drawCrosshair(
   const bottom = Math.max(...Object.values(bands).map((b) => b.y1));
   ctx.globalAlpha = 0.65;
   ctx.strokeStyle = palette.fg;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = palette.lineScale;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
   ctx.moveTo(x, top);

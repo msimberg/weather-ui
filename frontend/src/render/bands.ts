@@ -18,8 +18,7 @@ import {
   strokeWeighted,
   traceSmooth,
 } from "./paint";
-import type { Palette } from "./palette";
-import { UI_FONT } from "./palette";
+import { type Palette, uiFont } from "./palette";
 
 /** What a band painter is allowed to know about the view. */
 export interface BandEnv {
@@ -28,8 +27,8 @@ export interface BandEnv {
   nowSec: number;
 }
 
-const FONT_DATA = `10px ${UI_FONT}`;
-const FONT_DATA_BOLD = `600 10px ${UI_FONT}`;
+const dataFont = (p: Palette) => uiFont(p.boldText ? 600 : 400, 10);
+const dataBoldFont = (p: Palette) => uiFont(p.boldText ? 800 : 600, 10);
 
 // Day-aggregate labels keep a +0.15 alpha floor so the far field stays
 // readable where the hourly detail has faded out.
@@ -134,10 +133,10 @@ export function drawPrecip(
     }
   }
 
-  strokeWeighted(ctx, probPts, palette.sub, 1.4);
+  strokeWeighted(ctx, probPts, palette.sub, 1.4 * palette.lineScale);
 
   labels.reset();
-  ctx.font = FONT_DATA;
+  ctx.font = dataFont(palette);
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const g of model.dayGroups) {
@@ -212,14 +211,14 @@ export function drawTemp(
   }
 
   // Reference isotherms at freezing / room temperature, faint, when in range.
-  ctx.font = FONT_DATA;
+  ctx.font = dataFont(palette);
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   for (const r of tempRefs(env.units)) {
     if (r < tempLo || r > tempHi) continue;
     ctx.globalAlpha = 0.34;
     ctx.strokeStyle = palette.sub;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = palette.lineScale;
     ctx.setLineDash([2, 3]);
     ctx.beginPath();
     ctx.moveTo(gutter, y(r));
@@ -241,8 +240,8 @@ export function drawTemp(
     if (hr.apparentTemperature !== undefined)
       appPts.push({ x: X(hr.time), y: y(hr.apparentTemperature), w: f * 0.85 });
   }
-  strokeWeighted(ctx, appPts, palette.sub, 1.4, [5, 4]);
-  strokeWeighted(ctx, linePts, palette.temp, 2.4);
+  strokeWeighted(ctx, appPts, palette.sub, 1.4 * palette.lineScale, [5, 4]);
+  strokeWeighted(ctx, linePts, palette.temp, 2.4 * palette.lineScale);
 
   // Daily high/low dots and labels. Marker and number come as one unit, and
   // a day's H and L come as one atomic group: either both dots AND both
@@ -251,7 +250,7 @@ export function drawTemp(
   // envelope information. The smooth hi/lo envelope above still carries the
   // aggregate shape where groups are dropped.
   labels.reset();
-  ctx.font = FONT_DATA_BOLD;
+  ctx.font = dataBoldFont(palette);
   ctx.textAlign = "center";
   ctx.fillStyle = palette.hiLo;
   for (const g of model.dayGroups) {
@@ -387,8 +386,8 @@ export function drawWind(
     if (hr.windGust !== undefined) gustPts.push({ x: X(hr.time), y: y(hr.windGust), w: f * 0.75 });
     if (hr.windSpeed !== undefined) speedPts.push({ x: X(hr.time), y: y(hr.windSpeed), w: f });
   }
-  strokeWeighted(ctx, gustPts, palette.sub, 1.4);
-  strokeWeighted(ctx, speedPts, palette.wind, 2.4);
+  strokeWeighted(ctx, gustPts, palette.sub, 1.4 * palette.lineScale);
+  strokeWeighted(ctx, speedPts, palette.wind, 2.4 * palette.lineScale);
 
   labels.reset();
   for (const hr of model.hours) {
@@ -414,7 +413,7 @@ export function drawWind(
   // Same gating as the temperature H/L markers: dot and value are atomic,
   // and dense days drop the whole marker (space-gated below).
   labels.reset();
-  ctx.font = FONT_DATA_BOLD;
+  ctx.font = dataBoldFont(palette);
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const g of model.dayGroups) {
@@ -568,13 +567,13 @@ export function drawCloud(
     }
   };
   ctx.strokeStyle = bg;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 4 * palette.lineScale;
   ctx.lineJoin = "round";
   ctx.globalAlpha = 0.85;
   path();
   ctx.stroke();
   ctx.strokeStyle = palette.sub;
-  ctx.lineWidth = 1.8;
+  ctx.lineWidth = 1.8 * palette.lineScale;
   ctx.globalAlpha = 0.95;
   path();
   ctx.stroke();
@@ -585,7 +584,7 @@ export function drawCloud(
   // a few midday hours, so the label centers on the whole max run (start of
   // the first max hour to the next value change) rather than a raw sample.
   labels.reset();
-  ctx.font = FONT_DATA;
+  ctx.font = dataFont(palette);
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const g of model.dayGroups) {

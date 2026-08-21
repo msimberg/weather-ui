@@ -6,7 +6,9 @@ import {
   BAND_TITLE,
   bandLayout,
   DARK,
+  DARK_HC,
   LIGHT,
+  LIGHT_HC,
   leftGutter,
   type Palette,
   RIGHT_PAD,
@@ -55,7 +57,11 @@ export function Timeline() {
     );
   });
 
-  const palette = createMemo<Palette>(() => (resolvedTheme() === "light" ? LIGHT : DARK));
+  const palette = createMemo<Palette>(() => {
+    const light = resolvedTheme() === "light";
+    const hc = settings().highContrast;
+    return light ? (hc ? LIGHT_HC : LIGHT) : hc ? DARK_HC : DARK;
+  });
 
   createEffect(() => {
     const m = model();
