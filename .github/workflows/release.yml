@@ -168,10 +168,10 @@ jobs:
           major="${VERSION%%.*}"
           minor="$(echo "$VERSION" | cut -d. -f1-2)"
           tags="${IMAGE}:v${VERSION} ${IMAGE}:v${minor} ${IMAGE}:v${major} ${IMAGE}:latest"
-          # shellcheck disable=SC2086  # intentional word splitting of tag/digest lists
-          for t in $tags; do
-            docker buildx imagetools create "$t" $digests
-          done
+          tag_flags=""
+          for t in $tags; do tag_flags="$tag_flags -t $t"; done
+          # shellcheck disable=SC2086  # intentional splitting of flag/digest lists
+          docker buildx imagetools create $tag_flags $digests
 
   publish-release:
     name: attach binaries to GitHub release
