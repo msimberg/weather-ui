@@ -1,0 +1,223 @@
+name: release
+
+on:
+  # Manual tag pushes (`git tag v0.1.0 && git push --tags`).
+  push:
+    tags: ["v*"]
+  # Called by release-please.yml when it cuts a release; GITHUB_TOKEN
+  # pushes do not cascade-trigger the tags workflow, hence the call.
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/msimberg/weather-ui
+
+jobs:
+  version-check:
+    name: tag matches Cargo.toml version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: v
+        run: |
+          tag="${{ inputs.tag_name || github.ref_name }}"
+          crate="$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "//;s/"//')"
+          echo "tag=$tag crate=$crate"
+          test "v$crate" = "$tag" || { echo "tag $tag does not match Cargo.toml version $crate" >&2; exit 1; }
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    name: static binary (${{ matrix.name }})
+    needs: version-check
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: x86_64-linux-musl, runner: ubuntu-24.04, target: x86_64-unknown-linux-musl }
+          - { name: aarch64-linux-musl, runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # ring needs a C toolchain; musl-gcc gives us fully static output.
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: bin-${{ matrix.name }}
+
+      # Build the frontend so the tarball is runnable as extracted
+      # (WEATHER_UI_STATIC_DIR defaults to ./frontend/dist relative to cwd).
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: frontend
+
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: package tarball + sha256
+        env:
+          VERSION: ${{ needs.version-check.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          NAME: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          pkg="weather-ui-${VERSION}-${NAME}"
+          mkdir -p "dist/$pkg/frontend"
+          cp "target/${TARGET}/release/weather-ui" "dist/$pkg/"
+          cp -r frontend/dist "dist/$pkg/frontend/dist"
+          cp README.md LICENSE-MIT LICENSE-APACHE "dist/$pkg/" 2>/dev/null || true
+          tar -C dist -czf "dist/${pkg}.tar.gz" "$pkg"
+          (cd dist && sha256sum "${pkg}.tar.gz" > "${pkg}.tar.gz.sha256")
+          file "dist/$pkg/weather-ui"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: binary-${{ matrix.name }}
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+
+  image:
+    name: image build (${{ matrix.arch }})
+    needs: version-check
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build per-arch image, push by digest, export digest
+        uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          # Push by digest; tags are created in the merge step.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.source=https://github.com/msimberg/weather-ui
+            org.opencontainers.image.version=${{ needs.version-check.outputs.version }}
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,scope=image-${{ matrix.arch }},mode=max
+
+      - name: export digest
+        run: |
+          echo "${{ steps.build.outputs.digest }}" > digest.txt
+          mkdir -p digests
+          cp digest.txt "digests/${{ matrix.arch }}.txt"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}.txt
+          if-no-files-found: error
+
+  image-merge:
+    name: merge multi-arch manifest
+    needs: [version-check, image]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: create and push manifest
+        env:
+          VERSION: ${{ needs.version-check.outputs.version }}
+        run: |
+          set -euo pipefail
+          digests=$(while read -r d; do printf ' %s@%s' "${IMAGE}" "$d"; done < <(cat digests/*.txt))
+          # semver major/minor may re-alias on e.g. 0.2.0; derive from version.
+          major="${VERSION%%.*}"
+          minor="$(echo "$VERSION" | cut -d. -f1-2)"
+          tags="${IMAGE}:v${VERSION} ${IMAGE}:v${minor} ${IMAGE}:v${major} ${IMAGE}:latest"
+          # shellcheck disable=SC2086  # intentional word splitting of tag/digest lists
+          for t in $tags; do
+            docker buildx imagetools create "$t" $digests
+          done
+
+  publish-release:
+    name: attach binaries to GitHub release
+    needs: [version-check, binaries]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag_name || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+
+      # The release may already exist (release-please) or not (manual tag).
+      - name: create release if missing, then upload assets
+        run: |
+          set -euo pipefail
+          cd dist
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" --clobber -- *.tar.gz *.tar.gz.sha256
+          ls -la
+
+  smoke:
+    name: smoke test amd64 image
+    needs: [version-check, image-merge]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: run and hit /api/health
+        env:
+          VERSION: ${{ needs.version-check.outputs.version }}
+        run: |
+          set -euo pipefail
+          cid=$(docker run -d -p 8087:8087 "${IMAGE}:v${VERSION}")
+          sleep 3
+          curl -fsS http://127.0.0.1:8087/api/health | tee health.json
+          grep -q "\"ok\":true" health.json
+          grep -q "\"version\":\"${VERSION}\"" health.json
+          docker logs "$cid" | tail -3
+          docker rm -f "$cid"
