@@ -36,9 +36,9 @@ export function formatTemp(v: number | undefined): string {
 
 export function formatPrecipIntensity(v: number, u: Units): string {
   if (u === "us") {
-    return v < 0.1 ? (v * 1000).toFixed(0) + " mil/h" : v.toFixed(2) + " in/h";
+    return v < 0.1 ? `${(v * 1000).toFixed(0)} mil/h` : `${v.toFixed(2)} in/h`;
   }
-  return (v < 1 ? v.toFixed(2) : v.toFixed(1)) + " " + precipIntensityUnit(u);
+  return `${v < 1 ? v.toFixed(2) : v.toFixed(1)} ${precipIntensityUnit(u)}`;
 }
 
 export function formatPercent(v: number | undefined): string {
@@ -46,8 +46,22 @@ export function formatPercent(v: number | undefined): string {
 }
 
 const COMPASS = [
-  "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+  "N",
+  "NNE",
+  "NE",
+  "ENE",
+  "E",
+  "ESE",
+  "SE",
+  "SSE",
+  "S",
+  "SSW",
+  "SW",
+  "WSW",
+  "W",
+  "WNW",
+  "NW",
+  "NNW",
 ];
 
 export function compass(bearing: number | undefined): string {

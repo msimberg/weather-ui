@@ -1,9 +1,9 @@
 import { createEffect, createSignal } from "solid-js";
 
 import { fetchWeather } from "./api";
-import { prepare, type Prepared } from "./prepare";
-import { DEFAULT_NOW_SHARE, DEFAULT_WARP, clamp01, type WarpFn } from "./transform";
+import { type Prepared, prepare } from "./prepare";
 import { BAND_ORDER } from "./render";
+import { clamp01, DEFAULT_NOW_SHARE, DEFAULT_WARP, type WarpFn } from "./transform";
 import type { CurrentLocation, Units, WeatherPayload } from "./types";
 
 export interface Settings {
@@ -103,14 +103,21 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
   const br: Record<string, number> = {};
   for (const b of BAND_ORDER) {
     const v = (out.bandRatios as Record<string, number>)[b];
-    br[b] = typeof v === "number" && Number.isFinite(v) && v > 0 ? v : (DEFAULT_SETTINGS.bandRatios as Record<string, number>)[b];
+    br[b] =
+      typeof v === "number" && Number.isFinite(v) && v > 0
+        ? v
+        : (DEFAULT_SETTINGS.bandRatios as Record<string, number>)[b];
   }
   out.bandRatios = br as Settings["bandRatios"];
   if (typeof out.compactHeightVh !== "number" || !Number.isFinite(out.compactHeightVh)) {
     out.compactHeightVh = 0.62;
   }
   out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
-  if (out.provider !== "openmeteo" && out.provider !== "pirateweather" && out.provider !== "meteoblue") {
+  if (
+    out.provider !== "openmeteo" &&
+    out.provider !== "pirateweather" &&
+    out.provider !== "meteoblue"
+  ) {
     out.provider = DEFAULT_SETTINGS.provider;
   }
   return out;
@@ -185,7 +192,12 @@ function storeCached(key: string, payload: WeatherPayload): void {
   try {
     const keys = Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX));
     if (keys.length >= 8) {
-      keys.sort().slice(0, keys.length - 7).forEach((k) => localStorage.removeItem(k));
+      keys
+        .sort()
+        .slice(0, keys.length - 7)
+        .forEach((k) => {
+          localStorage.removeItem(k);
+        });
     }
   } catch {
     // Best effort pruning.

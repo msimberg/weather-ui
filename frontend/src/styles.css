@@ -119,8 +119,8 @@ button.icon-btn {
   background: var(--panel);
   color: var(--fg);
   cursor: pointer;
-  line-height: 1;
   font: inherit;
+  line-height: 1;
   font-size: 13px;
 }
 
@@ -263,7 +263,12 @@ button.icon-btn {
   border: 0;
   background: transparent;
   color: var(--sub);
-  font: 600 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font:
+    600 11px ui-monospace,
+    "SF Mono",
+    Menlo,
+    Consolas,
+    monospace;
   letter-spacing: 0.06em;
   writing-mode: vertical-rl;
   transform: rotate(180deg);

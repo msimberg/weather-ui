@@ -10,9 +10,9 @@ import {
   visibilityUnit,
   windUnit,
 } from "../format";
-import { sampleAt, type Prepared, type Sample } from "../prepare";
+import { type Prepared, type Sample, sampleAt } from "../prepare";
+import { nowTick, settings } from "../state";
 import { formatClock, formatFull } from "../time";
-import { settings, nowTick } from "../state";
 import type { DayPoint, HourPoint } from "../types";
 
 interface Row {
@@ -23,11 +23,7 @@ interface Row {
 /** The crosshair readout: one card per pointer position, listing everything
  * the API reports for the nearest sample. The sample tier (minute, hour, or
  * day aggregate) is shown so precision never masquerades as detail. */
-export function Tooltip(props: {
-  model: Prepared;
-  tSec: number;
-  style: { x: number; y: number };
-}) {
+export function Tooltip(props: { model: Prepared; tSec: number; style: { x: number; y: number } }) {
   const sample = () => sampleAt(props.model, props.tSec);
   const rows = () => buildRows(sample(), props.model, settings().units);
 
@@ -53,19 +49,21 @@ export function Tooltip(props: {
                 </For>
               </tbody>
             </table>
-            <Show when={s.minute && s.minute.precipIntensity !== undefined}>
-              <table>
-                <tbody>
-                  <tr>
-                    <td>minute {formatClock(props.model.timezone, s.minute!.time)}</td>
-                    <td>
-                      {formatPrecipIntensity(s.minute!.precipIntensity ?? 0, settings().units)}
-                      {s.minute!.precipProbability !== undefined &&
-                        ` @ ${formatPercent(s.minute!.precipProbability)}`}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <Show when={s.minute && s.minute.precipIntensity !== undefined ? s.minute : undefined}>
+              {(minute) => (
+                <table>
+                  <tbody>
+                    <tr>
+                      <td>minute {formatClock(props.model.timezone, minute().time)}</td>
+                      <td>
+                        {formatPrecipIntensity(minute().precipIntensity ?? 0, settings().units)}
+                        {minute().precipProbability !== undefined &&
+                          ` @ ${formatPercent(minute().precipProbability)}`}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
             </Show>
           </>
         )}
@@ -82,7 +80,8 @@ function layerSummary(model: Prepared, tSec: number | undefined): string | undef
     if (best < 0 || Math.abs(layers.time[i] - tSec) < Math.abs(layers.time[best] - tSec)) best = i;
   }
   if (best < 0) return undefined;
-  const fmt = (a: number[] | undefined) => (a && a[best] !== undefined ? String(Math.round(a[best])) : "-");
+  const fmt = (a: number[] | undefined) =>
+    a && a[best] !== undefined ? String(Math.round(a[best])) : "-";
   return `${fmt(layers.low)} / ${fmt(layers.mid)} / ${fmt(layers.high)} %`;
 }
 
@@ -97,7 +96,11 @@ function kindLabel(s: Sample): string {
   }
 }
 
-function buildRows(s: Sample | null, model: Prepared, u: ReturnType<typeof settings>["units"]): Row[] {
+function buildRows(
+  s: Sample | null,
+  model: Prepared,
+  u: ReturnType<typeof settings>["units"],
+): Row[] {
   const tz = model.timezone;
   if (!s) return [];
   const rows: Row[] = [];
@@ -116,7 +119,7 @@ function buildRows(s: Sample | null, model: Prepared, u: ReturnType<typeof setti
     push(
       "precip",
       p.precipIntensity !== undefined
-        ? `${formatPrecipIntensity(p.precipIntensity, u)} @ ${formatPercent(p.precipProbability)}${p.precipType ? " " + p.precipType : ""}`
+        ? `${formatPrecipIntensity(p.precipIntensity, u)} @ ${formatPercent(p.precipProbability)}${p.precipType ? ` ${p.precipType}` : ""}`
         : formatPercent(p.precipProbability),
     );
     push(
@@ -133,10 +136,7 @@ function buildRows(s: Sample | null, model: Prepared, u: ReturnType<typeof setti
         ? `${p.windSpeed.toFixed(1)} ${windUnit(u)} ${compass(p.windBearing)}`
         : undefined,
     );
-    push(
-      "gusts",
-      p.windGust !== undefined ? `${p.windGust.toFixed(1)} ${windUnit(u)}` : undefined,
-    );
+    push("gusts", p.windGust !== undefined ? `${p.windGust.toFixed(1)} ${windUnit(u)}` : undefined);
     push("pressure", p.pressure !== undefined ? `${p.pressure.toFixed(1)} hPa` : undefined);
     push("cloud", formatPercent(p.cloudCover));
     push("cloud low/mid/high", layerSummary(model, s.hour?.time));

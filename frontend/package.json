@@ -8,12 +8,15 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "dependencies": {
     "solid-js": "^1.9.10"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
     "typescript": "^5.7.3",
     "vite": "^6.3.5",
     "vite-plugin-solid": "^2.11.9",

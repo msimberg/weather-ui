@@ -4,14 +4,14 @@ import { axisRanges, type Prepared } from "../prepare";
 import {
   BAND_EXPLAIN,
   BAND_TITLE,
+  bandLayout,
   DARK,
   LIGHT,
-  TITLE_W,
-  bandLayout,
   leftGutter,
+  type Palette,
   RIGHT_PAD,
   renderTimeline,
-  type Palette,
+  TITLE_W,
 } from "../render";
 import {
   focus,
@@ -24,7 +24,7 @@ import {
   settings,
   status,
 } from "../state";
-import { warpAxis, type TimeAxis } from "../transform";
+import { type TimeAxis, warpAxis } from "../transform";
 import { Tooltip } from "./Tooltip";
 
 export function Timeline() {
@@ -45,7 +45,14 @@ export function Timeline() {
     const { pastMs, futureMs } = axisRanges(s.pastDays);
     const future = Math.min(futureMs, s.futureDays * 86_400_000);
     const axisW = Math.max(50, w - leftGutter(w) - RIGHT_PAD);
-    return warpAxis(nowTick() * 1000, pastMs, future, axisW, { fn: s.warpFn, strength: s.warpStrength }, s.nowShare);
+    return warpAxis(
+      nowTick() * 1000,
+      pastMs,
+      future,
+      axisW,
+      { fn: s.warpFn, strength: s.warpStrength },
+      s.nowShare,
+    );
   });
 
   const palette = createMemo<Palette>(() => (resolvedTheme() === "light" ? LIGHT : DARK));
@@ -71,7 +78,13 @@ export function Timeline() {
     const s = settings();
     const L = bandLayout(width(), height(), s.bandOrder, s.bandRatios);
     return s.bandOrder
-      .map((name) => ({ name, rect: L.bands[name], title: BAND_EXPLAIN[name], label: BAND_TITLE[name], gutter: L.gutter }))
+      .map((name) => ({
+        name,
+        rect: L.bands[name],
+        title: BAND_EXPLAIN[name],
+        label: BAND_TITLE[name],
+        gutter: L.gutter,
+      }))
       .filter((t) => t.rect && t.title);
   });
 
@@ -143,7 +156,6 @@ export function Timeline() {
       ref={wrapRef}
       classList={{ "timeline-wrap": true, compact: settings().layout === "compact" }}
       style={wrapStyle()}
-      tabIndex={0}
       role="application"
       aria-label="Weather timeline. Arrow keys move the crosshair. F toggles focus mode."
       onPointerMove={onPointerMove}
@@ -167,7 +179,12 @@ export function Timeline() {
           </span>
         )}
       </For>
-      <button type="button" class="focus-btn" onClick={() => setFocus(!focus())} title="Toggle focus mode (f)">
+      <button
+        type="button"
+        class="focus-btn"
+        onClick={() => setFocus(!focus())}
+        title="Toggle focus mode (f)"
+      >
         {focus() ? "exit focus" : "focus"}
       </button>
       <Show when={status() === "loading"}>

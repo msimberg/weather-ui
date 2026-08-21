@@ -5,7 +5,7 @@ import { CurrentStrip, SunStrip } from "./components/CurrentStrip";
 import { SearchBar } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Timeline } from "./components/Timeline";
-import { errorMsg, focus, location, model, setFocus, stale, settings, status } from "./state";
+import { errorMsg, focus, location, model, setFocus, settings, stale, status } from "./state";
 
 export function App() {
   createEffect(() => {
@@ -27,7 +27,12 @@ export function App() {
       <header>
         <SearchBar />
         <span classList={{ "status-chip": true, error: status() === "error" }}>
-          <Show when={status() === "error"} fallback={stale() ? "refreshing..." : status() === "loading" && !model() ? "loading..." : ""}>
+          <Show
+            when={status() === "error"}
+            fallback={
+              stale() ? "refreshing..." : status() === "loading" && !model() ? "loading..." : ""
+            }
+          >
             {errorMsg()}
           </Show>
         </span>

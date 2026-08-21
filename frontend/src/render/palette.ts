@@ -2,7 +2,7 @@
 // theme is near-black on paper, the dark theme near-white on near-black.
 // styles.css mirrors these values on --bg/--fg/--grid; keep them in sync.
 
-import { type IconStyle } from "../icons";
+import type { IconStyle } from "../icons";
 
 export const UI_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 

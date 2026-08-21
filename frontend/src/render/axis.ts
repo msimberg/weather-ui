@@ -1,11 +1,11 @@
 // Axis and overlay painters: day labels, hour labels, midnight/noon ticks,
 // the "now" marker, current-day hour gridlines, and the hover crosshair.
 
-import { formatHour, localHour } from "../time";
 import type { DayGroup, Prepared } from "../prepare";
-import { bandY, interpAt, labelHalo, type Ctx } from "./paint";
-import { type BandRect, type Layout } from "./layout";
-import { UI_FONT, type Palette } from "./palette";
+import { formatHour, localHour } from "../time";
+import type { BandRect, Layout } from "./layout";
+import { bandY, type Ctx, interpAt, labelHalo } from "./paint";
+import { type Palette, UI_FONT } from "./palette";
 
 // --- constants --------------------------------------------------------------
 
@@ -404,19 +404,39 @@ export function drawCrosshair(
   if (tb) {
     const depth = tb.y1 - tb.y0 - 2 * 4;
     const yTemp = (v: number) => tb.y1 - 4 - ((v - tempLo) / (tempHi - tempLo)) * depth;
-    dot(interpAt(model.hours, hoverSec, (h) => h.temperature), yTemp, palette.temp, 3.5);
+    dot(
+      interpAt(model.hours, hoverSec, (h) => h.temperature),
+      yTemp,
+      palette.temp,
+      3.5,
+    );
   }
   const wb = bands.wind;
   if (wb) {
-    dot(interpAt(model.hours, hoverSec, (h) => h.windSpeed), (v) => bandY(wb, v / model.domains.windMax), palette.wind, 3);
+    dot(
+      interpAt(model.hours, hoverSec, (h) => h.windSpeed),
+      (v) => bandY(wb, v / model.domains.windMax),
+      palette.wind,
+      3,
+    );
   }
   const cb = bands.cloud;
   if (cb) {
-    dot(interpAt(model.hours, hoverSec, (h) => h.uvIndex), (v) => bandY(cb, v / 11), palette.sub, 2.5);
+    dot(
+      interpAt(model.hours, hoverSec, (h) => h.uvIndex),
+      (v) => bandY(cb, v / 11),
+      palette.sub,
+      2.5,
+    );
   }
   const pb = bands.precip;
   if (pb) {
-    dot(interpAt(model.hours, hoverSec, (h) => h.precipProbability), (v) => bandY(pb, v), palette.sub, 2.5);
+    dot(
+      interpAt(model.hours, hoverSec, (h) => h.precipProbability),
+      (v) => bandY(pb, v),
+      palette.sub,
+      2.5,
+    );
   }
   ctx.globalAlpha = 1;
 }

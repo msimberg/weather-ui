@@ -12,8 +12,15 @@ const TIMEMACHINE_BASE: &str = "https://timemachine.pirateweather.net/forecast";
 /// so error text is never forwarded to clients.
 #[derive(Debug)]
 pub enum UpstreamError {
-    Network { service: &'static str, detail: String },
-    Status { status: StatusCode, service: &'static str, detail: String },
+    Network {
+        service: &'static str,
+        detail: String,
+    },
+    Status {
+        status: StatusCode,
+        service: &'static str,
+        detail: String,
+    },
 }
 
 impl UpstreamError {
@@ -31,7 +38,11 @@ impl fmt::Display for UpstreamError {
             UpstreamError::Network { service, detail } => {
                 write!(f, "{service}: {detail}")
             }
-            UpstreamError::Status { status, service, detail } => {
+            UpstreamError::Status {
+                status,
+                service,
+                detail,
+            } => {
                 write!(f, "{service} returned {status}: {detail}")
             }
         }
@@ -63,7 +74,11 @@ impl PirateClient {
             .build()
             .expect("reqwest client construction failed");
         PirateClient {
-            inner: Arc::new(Inner { http, key, nominatim_base }),
+            inner: Arc::new(Inner {
+                http,
+                key,
+                nominatim_base,
+            }),
         }
     }
 
@@ -96,24 +111,37 @@ impl PirateClient {
     }
 
     async fn get_json(&self, service: &'static str, url: &str) -> Result<Value, UpstreamError> {
-        let resp = self.inner.http.get(url).send().await.map_err(|e| UpstreamError::Network {
-            service,
-            detail: self.redact(e.to_string()),
-        })?;
+        let resp = self
+            .inner
+            .http
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service,
+                detail: self.redact(e.to_string()),
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             let excerpt: String = self.redact(body.chars().take(200).collect());
-            return Err(UpstreamError::Status { status, service, detail: excerpt });
+            return Err(UpstreamError::Status {
+                status,
+                service,
+                detail: excerpt,
+            });
         }
-        resp.error_for_status_ref().map_err(|e| UpstreamError::Network {
-            service,
-            detail: self.redact(e.to_string()),
-        })?;
-        resp.json::<Value>().await.map_err(|e| UpstreamError::Network {
-            service,
-            detail: self.redact(e.to_string()),
-        })
+        resp.error_for_status_ref()
+            .map_err(|e| UpstreamError::Network {
+                service,
+                detail: self.redact(e.to_string()),
+            })?;
+        resp.json::<Value>()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service,
+                detail: self.redact(e.to_string()),
+            })
     }
 
     fn coords(lat: f64, lon: f64) -> String {
@@ -229,7 +257,10 @@ mod tests {
         let client = PirateClient::new(Some("secret-api-key".to_string()), String::new(), None);
         let raw = "request failed for https://api.pirateweather.net/forecast/secret-api-key/1,2"
             .to_string();
-        let err = UpstreamError::Network { service: "svc", detail: client.redact(raw) };
+        let err = UpstreamError::Network {
+            service: "svc",
+            detail: client.redact(raw),
+        };
         assert!(!err.to_string().contains("secret-api-key"));
     }
 

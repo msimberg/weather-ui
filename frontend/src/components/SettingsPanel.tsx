@@ -1,9 +1,8 @@
 import { createSignal, For, Show } from "solid-js";
-
+import { BAND_TITLE } from "../render";
 import { setSettings, settings } from "../state";
 import type { WarpFn } from "../transform";
 import type { Units } from "../types";
-import { BAND_TITLE } from "../render";
 
 const LANGS = ["en", "de", "fr", "it", "es", "nl", "pl", "pt", "zh", "ja"];
 
@@ -165,7 +164,9 @@ export function SettingsPanel() {
             Theme
             <select
               value={settings().theme}
-              onChange={(e) => setSettings({ theme: e.currentTarget.value as "auto" | "light" | "dark" })}
+              onChange={(e) =>
+                setSettings({ theme: e.currentTarget.value as "auto" | "light" | "dark" })
+              }
             >
               <option value="auto">Auto</option>
               <option value="dark">Dark</option>
@@ -188,7 +189,9 @@ export function SettingsPanel() {
             <select
               value={settings().provider}
               onChange={(e) =>
-                setSettings({ provider: e.currentTarget.value as "openmeteo" | "pirateweather" | "meteoblue" })
+                setSettings({
+                  provider: e.currentTarget.value as "openmeteo" | "pirateweather" | "meteoblue",
+                })
               }
             >
               <For each={PROVIDERS}>
@@ -268,8 +271,22 @@ export function SettingsPanel() {
             <For each={settings().bandOrder}>
               {(id, i) => (
                 <div class="row">
-                  <button type="button" title="Move up" disabled={i() === 0} onClick={() => moveBand(id, -1)}>^</button>
-                  <button type="button" title="Move down" disabled={i() === settings().bandOrder.length - 1} onClick={() => moveBand(id, 1)}>v</button>
+                  <button
+                    type="button"
+                    title="Move up"
+                    disabled={i() === 0}
+                    onClick={() => moveBand(id, -1)}
+                  >
+                    ^
+                  </button>
+                  <button
+                    type="button"
+                    title="Move down"
+                    disabled={i() === settings().bandOrder.length - 1}
+                    onClick={() => moveBand(id, 1)}
+                  >
+                    v
+                  </button>
                   <span class="name">{BAND_TITLE[id] ?? id}</span>
                 </div>
               )}
@@ -277,31 +294,31 @@ export function SettingsPanel() {
           </fieldset>
 
           <Show when={settings().provider === "pirateweather"}>
-          <fieldset class="model-blend">
-            <legend>Model blend</legend>
-            <label>
-              AI models (AIGFS/AIGEFS/AIFS)
-              <input
-                type="checkbox"
-                checked={settings().aiModels}
-                onChange={(e) => setSettings({ aiModels: e.currentTarget.checked })}
-              />
-            </label>
-            <div class="model-grid">
-              <For each={MODELS}>
-                {(m) => (
-                  <label title={m.note}>
-                    <input
-                      type="checkbox"
-                      checked={settings().excludeModels.includes(m.id)}
-                      onChange={(e) => toggleModel(m.id, e.currentTarget.checked)}
-                    />
-                    exclude {m.id}
-                  </label>
-                )}
-              </For>
-            </div>
-          </fieldset>
+            <fieldset class="model-blend">
+              <legend>Model blend</legend>
+              <label>
+                AI models (AIGFS/AIGEFS/AIFS)
+                <input
+                  type="checkbox"
+                  checked={settings().aiModels}
+                  onChange={(e) => setSettings({ aiModels: e.currentTarget.checked })}
+                />
+              </label>
+              <div class="model-grid">
+                <For each={MODELS}>
+                  {(m) => (
+                    <label title={m.note}>
+                      <input
+                        type="checkbox"
+                        checked={settings().excludeModels.includes(m.id)}
+                        onChange={(e) => toggleModel(m.id, e.currentTarget.checked)}
+                      />
+                      exclude {m.id}
+                    </label>
+                  )}
+                </For>
+              </div>
+            </fieldset>
           </Show>
         </div>
       </Show>

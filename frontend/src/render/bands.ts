@@ -4,22 +4,22 @@
 import { formatTemp, windUnit } from "../format";
 import type { Prepared } from "../prepare";
 import type { HourPoint, Units } from "../types";
-import type { Palette } from "./palette";
-import { UI_FONT } from "./palette";
 import { BAND_PAD, type BandRect } from "./layout";
 import {
   bandY,
+  type Ctx,
   clampX,
+  type GreedyLabels,
   hexToRgb,
   interpSeries,
   labelHalo,
   lineFade,
+  type Pt,
   strokeWeighted,
   traceSmooth,
-  type Ctx,
-  type GreedyLabels,
-  type Pt,
 } from "./paint";
+import type { Palette } from "./palette";
+import { UI_FONT } from "./palette";
 
 /** What a band painter is allowed to know about the view. */
 export interface BandEnv {
@@ -302,7 +302,15 @@ function toKnots(speed: number, units: Units): number {
 /** WMO station-model wind barb with a bg-colored halo so it reads against
  * the speed line. Shaft is 18px; feathers at the tail: pennant 50 kt,
  * long barb 10 kt, short barb 5 kt. */
-function drawBarb(ctx: Ctx, x: number, y: number, bearingDeg: number, knots: number, color: string, halo: string) {
+function drawBarb(
+  ctx: Ctx,
+  x: number,
+  y: number,
+  bearingDeg: number,
+  knots: number,
+  color: string,
+  halo: string,
+) {
   const draw = (lw: number, stroke: string, fill: string | null) => {
     ctx.strokeStyle = stroke;
     ctx.fillStyle = fill ?? stroke;
@@ -389,7 +397,15 @@ export function drawWind(
     if (x < gutter + 2) continue;
     if (!labels.tryPlace(x, BARB_SPACING / 2)) continue;
     ctx.globalAlpha = Math.min(1, fade(hr.time) * 0.95 + 0.1);
-    drawBarb(ctx, x, y(hr.windSpeed), hr.windBearing, toKnots(hr.windSpeed, env.units), palette.wind, palette.bg);
+    drawBarb(
+      ctx,
+      x,
+      y(hr.windSpeed),
+      hr.windBearing,
+      toKnots(hr.windSpeed, env.units),
+      palette.wind,
+      palette.bg,
+    );
   }
   ctx.globalAlpha = 1;
 

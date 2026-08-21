@@ -163,5 +163,5 @@ export function SearchBar() {
 
 function shortName(name: string): string {
   const first = name.split(",")[0].trim();
-  return first.length > 24 ? first.slice(0, 23) + "..." : first;
+  return first.length > 24 ? `${first.slice(0, 23)}...` : first;
 }

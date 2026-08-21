@@ -11,9 +11,17 @@ import type { Prepared } from "../prepare";
 import { MIN_PAST_ALPHA, pastFade, type TimeAxis } from "../transform";
 import type { Units } from "../types";
 import { drawAxis, drawCrosshair, drawCurrentDayHours, drawNow, hourLabelTimes } from "./axis";
-import { drawCloud, drawPrecip, drawTemp, drawWind, type BandEnv } from "./bands";
-import { RIGHT_PAD, TITLE_W, bandLayout, leftGutter, canvasRight, type BandRect, type Layout } from "./layout";
-import { makeGreedyLabels, type Ctx } from "./paint";
+import { type BandEnv, drawCloud, drawPrecip, drawTemp, drawWind } from "./bands";
+import {
+  type BandRect,
+  bandLayout,
+  canvasRight,
+  type Layout,
+  leftGutter,
+  RIGHT_PAD,
+  TITLE_W,
+} from "./layout";
+import { type Ctx, makeGreedyLabels } from "./paint";
 import type { Palette } from "./palette";
 
 export interface ViewOptions {
@@ -40,13 +48,15 @@ export const BAND_EXPLAIN: Record<string, string> = {
     "Bars = hourly intensity (sqrt scale, by type). Line = probability. Halo = upstream intensity error. Per-day total shown where space allows.",
   cloud:
     "Blended cloud cover at low / mid / high altitude (darker = more cover). Step line = UV index, scaled to the day's peak.",
-  wind:
-    "Line = speed. Thin line = gusts. Barbs point where the wind comes from; feathers mark 5 / 10 / 50 knots.",
-  temp:
-    "Line = hourly temperature (fades far from now). Dashed = feels-like. Dots = daily high and low with the value reached.",
+  wind: "Line = speed. Thin line = gusts. Barbs point where the wind comes from; feathers mark 5 / 10 / 50 knots.",
+  temp: "Line = hourly temperature (fades far from now). Dashed = feels-like. Dots = daily high and low with the value reached.",
 };
 
-export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view: ViewOptions): void {
+export function renderTimeline(
+  canvas: HTMLCanvasElement,
+  model: Prepared,
+  view: ViewOptions,
+): void {
   const { axis, palette, hoverSec } = view;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -105,7 +115,13 @@ export function renderTimeline(canvas: HTMLCanvasElement, model: Prepared, view:
 }
 
 /** Night shading: merged spans under everything else, full band height. */
-function drawNights(ctx: Ctx, model: Prepared, X: (t: number) => number, L: Layout, palette: Palette) {
+function drawNights(
+  ctx: Ctx,
+  model: Prepared,
+  X: (t: number) => number,
+  L: Layout,
+  palette: Palette,
+) {
   ctx.fillStyle = palette.night;
   for (const span of model.nights) {
     const x0 = Math.max(L.gutter, X(span.startSec));
@@ -115,7 +131,13 @@ function drawNights(ctx: Ctx, model: Prepared, X: (t: number) => number, L: Layo
 }
 
 /** Dashed midnight dividers spanning the bands. */
-function drawDividers(ctx: Ctx, palette: Palette, model: Prepared, X: (t: number) => number, L: Layout) {
+function drawDividers(
+  ctx: Ctx,
+  palette: Palette,
+  model: Prepared,
+  X: (t: number) => number,
+  L: Layout,
+) {
   ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   ctx.setLineDash([5, 4]);
@@ -147,11 +169,10 @@ function fadePast(ctx: Ctx, L: Layout, Xnow: number) {
   ctx.restore();
 }
 
-// Re-exports so callers (state, components) have one import surface.
-export { TITLE_W, RIGHT_PAD, bandLayout, leftGutter, canvasRight };
-export type { BandRect, Layout };
-export { DARK, LIGHT, UI_FONT, iconStyle } from "./palette";
-export type { Palette } from "./palette";
-
 // For unit tests: step selection and day-label fit live in ./axis.
-export { HOUR_STEPS, dayLabelsRotate, hourLabelTimes } from "./axis";
+export { dayLabelsRotate, HOUR_STEPS, hourLabelTimes } from "./axis";
+export type { Palette } from "./palette";
+export { DARK, iconStyle, LIGHT, UI_FONT } from "./palette";
+export type { BandRect, Layout };
+// Re-exports so callers (state, components) have one import surface.
+export { bandLayout, canvasRight, leftGutter, RIGHT_PAD, TITLE_W };

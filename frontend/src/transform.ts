@@ -34,7 +34,7 @@ function curveFor(warp: Warp): Curve {
     case "power": {
       // strength 0 -> exponent 1 (linear), strength 1 -> 0.15.
       const k = 1 - 0.85 * s;
-      return { f: (u) => Math.pow(u, k), inv: (v) => Math.pow(v, 1 / k) };
+      return { f: (u) => u ** k, inv: (v) => v ** (1 / k) };
     }
     case "log": {
       const k = 0.01 + 99 * s;
@@ -109,7 +109,6 @@ export function warpAxis(
     return now + curve.inv(v) * futureMs;
   }
 
-
   return { t2x, x2t, now, pastMs, futureMs, width, cx };
 }
 
@@ -125,4 +124,3 @@ export function pastFade(tMs: number, now: number, pastMs: number): number {
 export function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
-

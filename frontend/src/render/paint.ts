@@ -119,7 +119,15 @@ export function clampX(x: number, gutter: number, right: number): number {
 
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
-  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  const n = parseInt(
+    h.length === 3
+      ? h
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : h,
+    16,
+  );
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
@@ -184,7 +192,14 @@ export function lineFade(dtSec: number): number {
 
 /** bg-colored stroke under text that sits over data (fill the same text in
  * ink right after). Keeps labels legible across rain bars, clouds, lines. */
-export function labelHalo(ctx: Ctx, text: string, x: number, y: number, bg: string, maxWidth?: number) {
+export function labelHalo(
+  ctx: Ctx,
+  text: string,
+  x: number,
+  y: number,
+  bg: string,
+  maxWidth?: number,
+) {
   ctx.lineWidth = 3;
   ctx.lineJoin = "round";
   ctx.strokeStyle = bg;

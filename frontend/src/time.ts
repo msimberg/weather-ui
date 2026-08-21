@@ -5,7 +5,7 @@
 const cache = new Map<string, Intl.DateTimeFormat>();
 
 function formatter(tz: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  const key = tz + "|" + JSON.stringify(opts);
+  const key = `${tz}|${JSON.stringify(opts)}`;
   let f = cache.get(key);
   if (!f) {
     f = new Intl.DateTimeFormat("en-GB", { timeZone: tz, ...opts });
@@ -65,16 +65,36 @@ function localWallClock(tz: string, tSec: number): LocalWallClock {
     second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(new Date(tSec * 1000));
-  let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, weekday = "";
+  let year = 0,
+    month = 0,
+    day = 0,
+    hour = 0,
+    minute = 0,
+    second = 0,
+    weekday = "";
   for (const part of parts) {
     switch (part.type) {
-      case "year": year = Number(part.value); break;
-      case "month": month = Number(part.value); break;
-      case "day": day = Number(part.value); break;
-      case "hour": hour = Number(part.value); break;
-      case "minute": minute = Number(part.value); break;
-      case "second": second = Number(part.value); break;
-      case "weekday": weekday = part.value; break;
+      case "year":
+        year = Number(part.value);
+        break;
+      case "month":
+        month = Number(part.value);
+        break;
+      case "day":
+        day = Number(part.value);
+        break;
+      case "hour":
+        hour = Number(part.value);
+        break;
+      case "minute":
+        minute = Number(part.value);
+        break;
+      case "second":
+        second = Number(part.value);
+        break;
+      case "weekday":
+        weekday = part.value;
+        break;
     }
   }
   return {

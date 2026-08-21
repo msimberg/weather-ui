@@ -13,16 +13,16 @@
     <title>weather-ui</title>
     <script>
       // Set the theme before first paint to avoid a flash of the wrong palette.
-      (function () {
+      (() => {
         var stored = null;
         try {
           stored = localStorage.getItem("wu.settings");
-        } catch (e) {}
+        } catch (_e) {}
         var theme = "auto";
         if (stored) {
           try {
             theme = JSON.parse(stored).theme || "auto";
-          } catch (e) {}
+          } catch (_e) {}
         }
         if (theme === "auto") {
           theme = matchMedia("(prefers-color-scheme: light)").matches

@@ -139,7 +139,10 @@ mod tests {
         let past = json!({
             "daily": {"data": [day_point(noon_local_utc, 22.0)]}
         });
-        assert_eq!(day_key(midnight_local_utc, offset), day_key(noon_local_utc, offset));
+        assert_eq!(
+            day_key(midnight_local_utc, offset),
+            day_key(noon_local_utc, offset)
+        );
         let merged = merge(&forecast, &[past], vec![]);
         let days = merged["daily"]["data"].as_array().unwrap();
         assert_eq!(days.len(), 1);

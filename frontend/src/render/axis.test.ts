@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayLabelsRotate, hourLabelTimes, HOUR_LABEL_MIN_PX } from "./axis";
+import { dayLabelsRotate, HOUR_LABEL_MIN_PX, hourLabelTimes } from "./axis";
 
 const TZ = "UTC";
 const DAY = 86_400;
@@ -10,7 +10,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => BASE + i * 3600);
 const DAY_GROUP = { startSec: BASE, endSec: BASE + DAY };
 
 function linearX(pxPerHour: number) {
-  return (t: number) => (t - BASE) / 3600 * pxPerHour;
+  return (t: number) => ((t - BASE) / 3600) * pxPerHour;
 }
 
 function localHourOf(t: number): number {
@@ -25,11 +25,7 @@ describe("dayLabelsRotate", () => {
   it("rotates only from the first failing day outward, per limb", () => {
     // Days: [past2, past1, TODAY, fut1, fut2, fut3]. fut1 fails (tight),
     // so fut1..fut3 rotate; the past limb and today stay horizontal.
-    const rotate = dayLabelsRotate(
-      [40, 40, 33, 40, 40, 40],
-      [80, 90, 200, 45, 44, 43],
-      2,
-    );
+    const rotate = dayLabelsRotate([40, 40, 33, 40, 40, 40], [80, 90, 200, 45, 44, 43], 2);
     expect(rotate).toEqual([false, false, false, true, true, true]);
   });
 
@@ -46,11 +42,7 @@ describe("dayLabelsRotate", () => {
 
   it("a sliver day neither draws nor opens the frontier", () => {
     // visW=10 < DAY_MIN_SPAN at the far future edge: no label, no rotation.
-    const rotate = dayLabelsRotate(
-      [40, 40, 33, 40, 40],
-      [80, 90, 200, 90, 10],
-      2,
-    );
+    const rotate = dayLabelsRotate([40, 40, 33, 40, 40], [80, 90, 200, 90, 10], 2);
     expect(rotate).toEqual([false, false, false, false, false]);
   });
 
@@ -61,11 +53,7 @@ describe("dayLabelsRotate", () => {
 
   it("innermost failing past day rotates the whole past limb", () => {
     // past1 (adjacent to today) fails -> it and everything further past rotate.
-    const rotate = dayLabelsRotate(
-      [40, 40, 33, 40, 40],
-      [200, 45, 200, 90, 90],
-      2,
-    );
+    const rotate = dayLabelsRotate([40, 40, 33, 40, 40], [200, 45, 200, 90, 90], 2);
     expect(rotate).toEqual([true, true, false, false, false]);
   });
 });
@@ -74,7 +62,15 @@ describe("hourLabelTimes", () => {
   const nowAfterDay = BASE + DAY;
 
   it("labels every hour when there is room", () => {
-    const out = hourLabelTimes(TZ, [DAY_GROUP], HOURS, nowAfterDay, linearX(2 * HOUR_LABEL_MIN_PX), 0, 10000);
+    const out = hourLabelTimes(
+      TZ,
+      [DAY_GROUP],
+      HOURS,
+      nowAfterDay,
+      linearX(2 * HOUR_LABEL_MIN_PX),
+      0,
+      10000,
+    );
     expect(out.length).toBe(24);
   });
 
@@ -89,7 +85,7 @@ describe("hourLabelTimes", () => {
     // Past part at coarse spacing, future part at fine spacing.
     const now = BASE + 12 * 3600 + 1800; // 12:30, hour 12 goes to the past part
     const X = (t: number) =>
-      t < now ? (t - BASE) / 3600 * 6 : (12 * 6) + (t - BASE - 12 * 3600) / 3600 * 40;
+      t < now ? ((t - BASE) / 3600) * 6 : 12 * 6 + ((t - BASE - 12 * 3600) / 3600) * 40;
     const out = hourLabelTimes(TZ, [DAY_GROUP], HOURS, now, X, 0, 10000);
     const hours = out.map(localHourOf);
     const past = hours.filter((h) => h <= 12).sort((a, b) => a - b);
@@ -119,7 +115,7 @@ describe("hourLabelTimes", () => {
     }));
     const hours = Array.from({ length: DAYS * 24 }, (_, i) => BASE + i * 3600);
     const now = BASE + DAYS * DAY;
-    const X = (t: number) => (t - BASE) / 3600 * 0.5;
+    const X = (t: number) => ((t - BASE) / 3600) * 0.5;
     const out = hourLabelTimes(TZ, groups, hours, now, X, 0, 10000);
     const kept = out.map(localHourOf);
     // Every kept label is a midnight, and none is closer than the minimum.
@@ -138,7 +134,7 @@ describe("hourLabelTimes", () => {
     // while the distant midnight remains (no collision at 14 px apart).
     const now = BASE + 12 * 3600 + 1800;
     const X = (t: number) =>
-      t < now ? (t - BASE) / 3600 : (12 * 1) + (t - BASE - 12 * 3600) / 3600 * 20;
+      t < now ? (t - BASE) / 3600 : 12 * 1 + ((t - BASE - 12 * 3600) / 3600) * 20;
     const out = hourLabelTimes(TZ, [DAY_GROUP], HOURS, now, X, 0, 10000);
     const hours = out.map(localHourOf).sort((a, b) => a - b);
     expect(hours).toContain(0);

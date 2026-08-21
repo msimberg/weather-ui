@@ -1,5 +1,5 @@
-import type { DayPoint, HourPoint, MinutePoint, WeatherPayload } from "./types";
 import { formatDayLabel, formatDayShort, localMidnight } from "./time";
+import type { DayPoint, HourPoint, MinutePoint, WeatherPayload } from "./types";
 
 // prepare() converts the API payload into the render model: domain bounds,
 // night shading intervals, and per-day groupings. It runs once per fetch, so
@@ -62,7 +62,7 @@ export interface Prepared {
 /** Next power-friendly tick step, e.g. 12.3 -> 20, 53 -> 100. */
 export function niceCeil(v: number): number {
   if (v <= 0 || !Number.isFinite(v)) return 1;
-  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const mag = 10 ** Math.floor(Math.log10(v));
   const frac = v / mag;
   const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
   return nice * mag;

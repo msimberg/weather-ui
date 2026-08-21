@@ -1,17 +1,9 @@
 import { createEffect, For, Show } from "solid-js";
-
+import { compass, formatPercent, formatTemp, visibilityUnit, windUnit } from "../format";
 import { drawIcon, type IconStyle } from "../icons";
-import { DARK, LIGHT, iconStyle } from "../render";
-import {
-  compass,
-  formatPercent,
-  formatTemp,
-  visibilityUnit,
-  windUnit,
-} from "../format";
+import { DARK, iconStyle, LIGHT } from "../render";
 import { model, nowTick, resolvedTheme, settings } from "../state";
-import { formatFull } from "../time";
-import { formatClock } from "../time";
+import { formatClock, formatFull } from "../time";
 import type { HourPoint, Units } from "../types";
 
 const currentIconStyle = (): IconStyle =>
@@ -30,7 +22,7 @@ export function IconCanvas(props: { name: string | undefined; size: number }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawIcon(ctx, props.name, 0, 0, props.size, currentIconStyle());
   });
-  return <canvas ref={ref} aria-hidden="true" />;
+  return <canvas ref={ref} />;
 }
 
 /** Big-number strip for the current instant: Dark Sky's dense dashboard row. */
@@ -47,9 +39,7 @@ export function CurrentStrip() {
             <span class="big">{formatTemp(cur?.temperature)}</span>
             <span class="summary">
               {cur?.summary ?? ""}
-              <Show when={m.summaryMinutely}>
-                {(s) => <span class="next-hour">{s()}</span>}
-              </Show>
+              <Show when={m.summaryMinutely}>{(s) => <span class="next-hour">{s()}</span>}</Show>
               <Show when={today?.temperatureHigh !== undefined}>
                 <span class="next-hour">
                   Today H {formatTemp(today?.temperatureHigh)} / L{" "}
@@ -96,7 +86,11 @@ function chipList(cur: HourPoint | undefined, u: Units): Chip[] {
     if (value === undefined || value === null || Number.isNaN(value)) return;
     out.push({ label, value: String(value), title });
   };
-  push("feels", formatTemp(cur.apparentTemperature), "Apparent temperature (wind, humidity, solar-corrected)");
+  push(
+    "feels",
+    formatTemp(cur.apparentTemperature),
+    "Apparent temperature (wind, humidity, solar-corrected)",
+  );
   push(
     "wind",
     cur.windSpeed !== undefined
@@ -112,9 +106,7 @@ function chipList(cur: HourPoint | undefined, u: Units): Chip[] {
   push("uv", cur.uvIndex !== undefined ? cur.uvIndex.toFixed(0) : undefined, "UV index");
   push(
     "vis",
-    cur.visibility !== undefined
-      ? `${cur.visibility.toFixed(1)} ${visibilityUnit(u)}`
-      : undefined,
+    cur.visibility !== undefined ? `${cur.visibility.toFixed(1)} ${visibilityUnit(u)}` : undefined,
     "Visibility",
   );
   push(
@@ -122,9 +114,21 @@ function chipList(cur: HourPoint | undefined, u: Units): Chip[] {
     cur.pressure !== undefined ? cur.pressure.toFixed(0) : undefined,
     "Sea-level pressure (hPa)",
   );
-  push("aqi", cur.airQualityIndex !== undefined ? cur.airQualityIndex.toFixed(0) : undefined, "Air quality index");
-  push("cape", cur.cape !== undefined ? cur.cape.toFixed(0) : undefined, "Convective available potential energy (J/kg)");
-  push("smoke", cur.smoke !== undefined ? cur.smoke.toFixed(1) : undefined, "Near-surface smoke (ug/m^3)");
+  push(
+    "aqi",
+    cur.airQualityIndex !== undefined ? cur.airQualityIndex.toFixed(0) : undefined,
+    "Air quality index",
+  );
+  push(
+    "cape",
+    cur.cape !== undefined ? cur.cape.toFixed(0) : undefined,
+    "Convective available potential energy (J/kg)",
+  );
+  push(
+    "smoke",
+    cur.smoke !== undefined ? cur.smoke.toFixed(1) : undefined,
+    "Near-surface smoke (ug/m^3)",
+  );
   return out;
 }
 

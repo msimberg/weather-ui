@@ -42,7 +42,9 @@ impl MeteoBlueClient {
             .timeout(Duration::from_secs(30))
             .build()
             .expect("reqwest client construction failed");
-        MeteoBlueClient { inner: std::sync::Arc::new(Inner { http, key }) }
+        MeteoBlueClient {
+            inner: std::sync::Arc::new(Inner { http, key }),
+        }
     }
 
     pub fn has_key(&self) -> bool {
@@ -65,20 +67,32 @@ impl MeteoBlueClient {
         let url = format!(
             "{PACKAGES_BASE}?lat={lat:.3}&lon={lon:.3}&timeformat=iso8601&history_days={history}&apikey={key}"
         );
-        let resp = self.inner.http.get(&url).send().await.map_err(|e| UpstreamError::Network {
-            service: "meteoblue",
-            detail: e.to_string(),
-        })?;
+        let resp = self
+            .inner
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service: "meteoblue",
+                detail: e.to_string(),
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             let excerpt: String = body.chars().take(200).collect();
-            return Err(UpstreamError::Status { status, service: "meteoblue", detail: excerpt });
+            return Err(UpstreamError::Status {
+                status,
+                service: "meteoblue",
+                detail: excerpt,
+            });
         }
-        resp.json::<Value>().await.map_err(|e| UpstreamError::Network {
-            service: "meteoblue",
-            detail: e.to_string(),
-        })
+        resp.json::<Value>()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service: "meteoblue",
+                detail: e.to_string(),
+            })
     }
 }
 
@@ -122,11 +136,23 @@ pub fn parse_iso_epoch(s: &str) -> Option<i64> {
 /// meteoblue hourly pictocode (1-35) -> (summary, day icon, night icon,
 /// precip type). Icons use the Dark Sky vocabulary like the other providers.
 /// Reference: docs.meteoblue.com/en/meteo/variables/pictograms.
-fn pictocode(code: i64) -> (&'static str, &'static str, &'static str, Option<&'static str>) {
+fn pictocode(
+    code: i64,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<&'static str>,
+) {
     match code {
         1..=3 => ("Clear", "clear-day", "clear-night", None),
         4..=6 => ("Mostly clear", "clear-day", "clear-night", None),
-        7..=12 => ("Partly cloudy", "partly-cloudy-day", "partly-cloudy-night", None),
+        7..=12 => (
+            "Partly cloudy",
+            "partly-cloudy-day",
+            "partly-cloudy-night",
+            None,
+        ),
         13..=15 => ("Hazy", "fog", "fog", None),
         16..=18 => ("Foggy", "fog", "fog", None),
         19..=21 => ("Mostly cloudy", "cloudy", "cloudy", None),
@@ -135,9 +161,19 @@ fn pictocode(code: i64) -> (&'static str, &'static str, &'static str, Option<&'s
         24 => ("Snow", "snow", "snow", Some("snow")),
         25 => ("Heavy rain", "rain", "rain", Some("rain")),
         26 => ("Heavy snow", "snow", "snow", Some("snow")),
-        27 | 28 => ("Thunderstorms", "thunderstorm", "thunderstorm", Some("rain")),
+        27 | 28 => (
+            "Thunderstorms",
+            "thunderstorm",
+            "thunderstorm",
+            Some("rain"),
+        ),
         29 => ("Snow storm", "snow", "snow", Some("snow")),
-        30 => ("Heavy thunderstorms", "thunderstorm", "thunderstorm", Some("rain")),
+        30 => (
+            "Heavy thunderstorms",
+            "thunderstorm",
+            "thunderstorm",
+            Some("rain"),
+        ),
         31 => ("Showers", "rain", "rain", Some("rain")),
         32 => ("Snow showers", "snow", "snow", Some("snow")),
         33 => ("Light rain", "rain", "rain", Some("rain")),
@@ -178,9 +214,20 @@ fn convert_precip_mm(mm: f64, units: &str) -> f64 {
 /// point) are simply not produced here -- the merge with Open-Meteo fills
 /// them per hour afterwards.
 fn meteoblue_hours(mb: &Value, units: &str) -> Vec<Value> {
-    let Some(data) = mb.get("data_1h") else { return Vec::new() };
-    let times = data.get("time").and_then(Value::as_array).cloned().unwrap_or_default();
-    let arr = |k: &str| data.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
+    let Some(data) = mb.get("data_1h") else {
+        return Vec::new();
+    };
+    let times = data
+        .get("time")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let arr = |k: &str| {
+        data.get(k)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
 
     let out = Vec::with_capacity(times.len());
     let (temp, felt) = (arr("temperature"), arr("felttemperature"));
@@ -191,7 +238,9 @@ fn meteoblue_hours(mb: &Value, units: &str) -> Vec<Value> {
 
     let mut hours = out;
     for (i, t) in times.iter().enumerate() {
-        let Some(ts) = t.as_str().and_then(parse_iso_epoch) else { continue };
+        let Some(ts) = t.as_str().and_then(parse_iso_epoch) else {
+            continue;
+        };
         let mut slot = Map::new();
         slot.insert("time".to_string(), json!(ts));
         let daylight = isday
@@ -203,10 +252,16 @@ fn meteoblue_hours(mb: &Value, units: &str) -> Vec<Value> {
             slot.insert("temperature".to_string(), json!(convert_temp_c(v, units)));
         }
         if let Some(v) = felt.get(i).and_then(Value::as_f64) {
-            slot.insert("apparentTemperature".to_string(), json!(convert_temp_c(v, units)));
+            slot.insert(
+                "apparentTemperature".to_string(),
+                json!(convert_temp_c(v, units)),
+            );
         }
         if let Some(v) = precip.get(i).and_then(Value::as_f64) {
-            slot.insert("precipIntensity".to_string(), json!(convert_precip_mm(v, units)));
+            slot.insert(
+                "precipIntensity".to_string(),
+                json!(convert_precip_mm(v, units)),
+            );
         }
         if let Some(v) = precip_prob.get(i).and_then(Value::as_f64) {
             slot.insert("precipProbability".to_string(), json!(v / 100.0));
@@ -229,7 +284,10 @@ fn meteoblue_hours(mb: &Value, units: &str) -> Vec<Value> {
         if let Some(v) = picto.get(i).and_then(Value::as_i64) {
             let (summary, day, night, ptype) = pictocode(v);
             slot.insert("summary".to_string(), json!(summary));
-            slot.insert("icon".to_string(), json!(if daylight { day } else { night }));
+            slot.insert(
+                "icon".to_string(),
+                json!(if daylight { day } else { night }),
+            );
             if let Some(p) = ptype {
                 slot.insert("precipType".to_string(), json!(p));
             }
@@ -253,48 +311,77 @@ fn meteoblue_days(hours: &[Value]) -> Vec<Value> {
     };
     let mut days: BTreeMap<i64, Map<String, Value>> = BTreeMap::new();
     for h in hours {
-        let Some(t) = h.get("time").and_then(Value::as_i64) else { continue };
+        let Some(t) = h.get("time").and_then(Value::as_i64) else {
+            continue;
+        };
         let day_start = first + (t - first).div_euclid(86_400) * 86_400;
-        let d = days.entry(day_start).or_insert_with(Map::new);
+        let d = days.entry(day_start).or_default();
         d.insert("time".to_string(), json!(day_start));
         if let Some(temp) = h.get("temperature").and_then(Value::as_f64) {
-            if d.get("temperatureHigh").and_then(Value::as_f64).is_none_or(|m| temp > m) {
+            if d.get("temperatureHigh")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| temp > m)
+            {
                 d.insert("temperatureHigh".to_string(), json!(temp));
                 d.insert("temperatureHighTime".to_string(), json!(t));
             }
-            if d.get("temperatureLow").and_then(Value::as_f64).is_none_or(|m| temp < m) {
+            if d.get("temperatureLow")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| temp < m)
+            {
                 d.insert("temperatureLow".to_string(), json!(temp));
                 d.insert("temperatureLowTime".to_string(), json!(t));
             }
         }
         if let Some(felt) = h.get("apparentTemperature").and_then(Value::as_f64) {
-            if d.get("apparentTemperatureHigh").and_then(Value::as_f64).is_none_or(|m| felt > m) {
+            if d.get("apparentTemperatureHigh")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| felt > m)
+            {
                 d.insert("apparentTemperatureHigh".to_string(), json!(felt));
             }
-            if d.get("apparentTemperatureLow").and_then(Value::as_f64).is_none_or(|m| felt < m) {
+            if d.get("apparentTemperatureLow")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| felt < m)
+            {
                 d.insert("apparentTemperatureLow".to_string(), json!(felt));
             }
         }
         if let Some(p) = h.get("precipIntensity").and_then(Value::as_f64) {
-            let acc = d.get("precipAccumulation").and_then(Value::as_f64).unwrap_or(0.0);
+            let acc = d
+                .get("precipAccumulation")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
             // 1h intensity == 1h accumulation, so summing is the daily total.
             d.insert("precipAccumulation".to_string(), json!(acc + p));
-            if d.get("precipIntensityMax").and_then(Value::as_f64).is_none_or(|m| p > m) {
+            if d.get("precipIntensityMax")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| p > m)
+            {
                 d.insert("precipIntensityMax".to_string(), json!(p));
             }
         }
         if let Some(prob) = h.get("precipProbability").and_then(Value::as_f64) {
-            if d.get("precipProbability").and_then(Value::as_f64).is_none_or(|m| prob > m) {
+            if d.get("precipProbability")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| prob > m)
+            {
                 d.insert("precipProbability".to_string(), json!(prob));
             }
         }
         if let Some(uv) = h.get("uvIndex").and_then(Value::as_f64) {
-            if d.get("uvIndexMax").and_then(Value::as_f64).is_none_or(|m| uv > m) {
+            if d.get("uvIndexMax")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| uv > m)
+            {
                 d.insert("uvIndexMax".to_string(), json!(uv));
             }
         }
         if let Some(w) = h.get("windSpeed").and_then(Value::as_f64) {
-            if d.get("windSpeed").and_then(Value::as_f64).is_none_or(|m| w > m) {
+            if d.get("windSpeed")
+                .and_then(Value::as_f64)
+                .is_none_or(|m| w > m)
+            {
                 d.insert("windSpeed".to_string(), json!(w));
             }
         }
@@ -302,8 +389,11 @@ fn meteoblue_days(hours: &[Value]) -> Vec<Value> {
     // Day icon/summary: only set when the day has meaningful precip, based
     // on the wettest hour's type; otherwise the merge keeps the icon the
     // open-meteo day derived from its weather code.
-    for (_, d) in days.iter_mut() {
-        let wet = d.get("precipIntensityMax").and_then(Value::as_f64).unwrap_or(0.0);
+    for d in days.values_mut() {
+        let wet = d
+            .get("precipIntensityMax")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
         if wet > 0.1 {
             d.insert("icon".to_string(), json!("rain"));
             d.insert("summary".to_string(), json!("Precipitation expected"));
@@ -338,7 +428,9 @@ pub fn merge(mb: &Value, om_doc: &Value, units: &str) -> Value {
     }
     let mut merged_hours: Vec<Value> = Vec::with_capacity(om_hours.len());
     for oh in &om_hours {
-        let Some(t) = oh.get("time").and_then(Value::as_i64) else { continue };
+        let Some(t) = oh.get("time").and_then(Value::as_i64) else {
+            continue;
+        };
         if let Some(mh) = mb_by_time.remove(&t) {
             let mut merged = oh.clone();
             let obj = merged.as_object_mut().expect("hour is an object");
@@ -365,7 +457,8 @@ pub fn merge(mb: &Value, om_doc: &Value, units: &str) -> Value {
 
     // Daily: meteoblue-derived rows win the weather fields; the sunshine
     // times from open-meteo survive because meteoblue's free tier has none.
-    let mut mb_day_by_time: std::collections::HashMap<i64, &Value> = std::collections::HashMap::new();
+    let mut mb_day_by_time: std::collections::HashMap<i64, &Value> =
+        std::collections::HashMap::new();
     for d in mb_days.iter() {
         if let Some(t) = d.get("time").and_then(Value::as_i64) {
             // meteoblue day starts at local midnight; open-meteo daily.time
@@ -382,7 +475,9 @@ pub fn merge(mb: &Value, om_doc: &Value, units: &str) -> Value {
         .unwrap_or_default();
     let mut merged_days: Vec<Value> = Vec::with_capacity(om_days.len());
     for od in &om_days {
-        let Some(t) = od.get("time").and_then(Value::as_i64) else { continue };
+        let Some(t) = od.get("time").and_then(Value::as_i64) else {
+            continue;
+        };
         // Find the meteoblue day within +-12h (same local date, different
         // epoch conventions are possible).
         if let Some(md) = mb_days.iter().find(|md| {
@@ -432,8 +527,8 @@ pub fn merge(mb: &Value, om_doc: &Value, units: &str) -> Value {
         .unwrap_or_default();
     if let Some(slot) = hours
         .iter()
-        .filter(|h| h.get("time").and_then(Value::as_i64).unwrap_or(0) <= now_sec)
-        .last()
+        .rev()
+        .find(|h| h.get("time").and_then(Value::as_i64).unwrap_or(0) <= now_sec)
     {
         let mut cur = slot.clone();
         let obj = cur.as_object_mut().expect("hour is an object");
@@ -473,7 +568,10 @@ mod tests {
     #[test]
     fn parse_iso_epoch_midnight_zurich_matches_openmeteo() {
         // Open-Meteo returned 1787004000 for local midnight 2026-08-18 Zurich.
-        assert_eq!(parse_iso_epoch("2026-08-18T00:00+02:00").unwrap(), 1_787_004_000);
+        assert_eq!(
+            parse_iso_epoch("2026-08-18T00:00+02:00").unwrap(),
+            1_787_004_000
+        );
     }
 
     #[test]
@@ -577,6 +675,9 @@ mod tests {
         assert_eq!(day["sunriseTime"], json!(1787017577));
         assert_eq!(day["moonPhase"], json!(0.5));
         assert!(day["temperatureHigh"].as_f64().unwrap() < 30.0);
-        assert!(doc["flags"]["sources"].as_array().unwrap().contains(&json!("meteoblue")));
+        assert!(doc["flags"]["sources"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("meteoblue")));
     }
 }

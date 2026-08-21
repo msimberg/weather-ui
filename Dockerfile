@@ -2,14 +2,14 @@
 # runtime image. The final image is ~25 MB (alpine + one static binary +
 # dist assets) and contains no toolchain.
 
-FROM node:24-alpine AS frontend
+FROM node:24-alpine3.24 AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
-FROM rust:1-alpine3.21 AS backend
+FROM rust:1-alpine3.24 AS backend
 WORKDIR /b
 # ring (via rustls) needs a C toolchain on musl.
 RUN apk add --no-cache musl-dev
@@ -19,7 +19,7 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && cargo build --release && r
 COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN adduser -D -u 10001 app
 WORKDIR /app
 COPY --from=backend /b/target/release/weather-ui /app/weather-ui

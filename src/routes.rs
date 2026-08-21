@@ -30,8 +30,18 @@ const PROVIDERS: [&str; 3] = ["openmeteo", "pirateweather", "meteoblue"];
 
 /// Model family names accepted by Pirate Weather's exclude parameter.
 const MODELS: [&str; 12] = [
-    "hrrr", "nbm", "gefs", "gfs", "rtma_ru", "ecmwf_ifs", "dwd_mosmix",
-    "ecmwf_aifs", "aigefs", "aigfs", "raqdps", "silam",
+    "hrrr",
+    "nbm",
+    "gefs",
+    "gfs",
+    "rtma_ru",
+    "ecmwf_ifs",
+    "dwd_mosmix",
+    "ecmwf_aifs",
+    "aigefs",
+    "aigfs",
+    "raqdps",
+    "silam",
 ];
 
 #[derive(Clone)]
@@ -49,7 +59,12 @@ impl AppState {
         mb: MeteoBlueClient,
         cache: Arc<Cache>,
     ) -> AppState {
-        AppState { client, om, mb, cache }
+        AppState {
+            client,
+            om,
+            mb,
+            cache,
+        }
     }
 }
 
@@ -135,7 +150,9 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
     if !UNITS.contains(&units.as_str()) {
         return bad_request("units must be one of si, us, ca, uk, uk2").into_response();
     }
-    if !lang.chars().all(|c| c.is_ascii_lowercase() || c == '-') || lang.is_empty() || lang.len() > 12
+    if !lang.chars().all(|c| c.is_ascii_lowercase() || c == '-')
+        || lang.is_empty()
+        || lang.len() > 12
     {
         return bad_request("lang must be a short language code").into_response();
     }
@@ -158,8 +175,7 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
     let model_variant = format!("{exclude}+{aimodels}");
 
     let coords = format!("{:.3},{:.3}", q.lat, lon);
-    let weather_key =
-        format!("wx:{provider}:{coords}:{units}:{lang}:{past_days}:{model_variant}");
+    let weather_key = format!("wx:{provider}:{coords}:{units}:{lang}:{past_days}:{model_variant}");
     if let Some(cached) = state.cache.get(&weather_key) {
         return ([(CACHE_CONTROL, "no-store")], Json(cached)).into_response();
     }
@@ -229,13 +245,34 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
             )
                 .into_response();
         }
-        match fetch_pirate(&state, q.lat, lon, past_days, &units, &lang, &exclude, aimodels, &coords).await {
+        let req = PirateFetch {
+            past_days,
+            units: &units,
+            lang: &lang,
+            exclude: &exclude,
+            aimodels,
+            coords: &coords,
+        };
+        match fetch_pirate(&state, q.lat, lon, &req).await {
             Ok(doc) => doc,
             Err(e) => return e.into_response(),
         }
     };
-    state.cache.insert(weather_key, merged.clone(), Some(FORECAST_TTL));
+    state
+        .cache
+        .insert(weather_key, merged.clone(), Some(FORECAST_TTL));
     ([(CACHE_CONTROL, "no-store")], Json(merged)).into_response()
+}
+
+/// Request-scoped parameters for the Pirate Weather path, grouped so
+/// fetch_pirate stays readable (clippy's too-many-arguments threshold).
+struct PirateFetch<'a> {
+    past_days: u32,
+    units: &'a str,
+    lang: &'a str,
+    exclude: &'a str,
+    aimodels: bool,
+    coords: &'a str,
 }
 
 /// Pirate path: forecast + timemachine fan-out for past days + Open-Meteo
@@ -246,13 +283,16 @@ async fn fetch_pirate(
     state: &AppState,
     lat: f64,
     lon: f64,
-    past_days: u32,
-    units: &str,
-    lang: &str,
-    exclude: &str,
-    aimodels: bool,
-    coords: &str,
+    req: &PirateFetch<'_>,
 ) -> Result<Value, Response> {
+    let PirateFetch {
+        past_days,
+        units,
+        lang,
+        exclude,
+        aimodels,
+        coords,
+    } = *req;
     // Forecast (fatal) and cloud layers (non-fatal) run concurrently.
     let fc_client = state.client.clone();
     let om_client = state.client.clone();
@@ -281,7 +321,10 @@ async fn fetch_pirate(
 
     let mut past: Vec<Value> = Vec::new();
     if past_days >= 1 {
-        let offset = forecast.get("offset").and_then(Value::as_f64).unwrap_or(0.0);
+        let offset = forecast
+            .get("offset")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
         let mut set = JoinSet::new();
         for (ago, ts) in day_timestamps(unix_now(), offset, past_days) {
             let client = state.client.clone();
@@ -317,7 +360,9 @@ async fn fetch_pirate(
 
     let mut merged = merge::merge(&forecast, &past, warnings);
     if let Some(cl) = cloud_layers {
-        let root = merged.as_object_mut().expect("merged response is an object");
+        let root = merged
+            .as_object_mut()
+            .expect("merged response is an object");
         root.insert("cloudLayers".to_string(), cl);
     }
     Ok(merged)
@@ -459,14 +504,27 @@ mod tests {
     #[test]
     fn error_mapping_hides_upstream_detail() {
         for (given, want) in [
-            (Some(StatusCode::TOO_MANY_REQUESTS), StatusCode::TOO_MANY_REQUESTS),
+            (
+                Some(StatusCode::TOO_MANY_REQUESTS),
+                StatusCode::TOO_MANY_REQUESTS,
+            ),
             (Some(StatusCode::FORBIDDEN), StatusCode::BAD_GATEWAY),
-            (Some(StatusCode::INTERNAL_SERVER_ERROR), StatusCode::BAD_GATEWAY),
+            (
+                Some(StatusCode::INTERNAL_SERVER_ERROR),
+                StatusCode::BAD_GATEWAY,
+            ),
             (None, StatusCode::BAD_GATEWAY),
         ] {
             let err = match given {
-                Some(s) => UpstreamError::Status { status: s, service: "svc", detail: "x".into() },
-                None => UpstreamError::Network { service: "svc", detail: "x".into() },
+                Some(s) => UpstreamError::Status {
+                    status: s,
+                    service: "svc",
+                    detail: "x".into(),
+                },
+                None => UpstreamError::Network {
+                    service: "svc",
+                    detail: "x".into(),
+                },
             };
             let (status, _) = upstream_failure(&err);
             assert_eq!(status, want);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pastFade, warpAxis, MIN_PAST_ALPHA, type Warp, type WarpFn } from "./transform";
+import { MIN_PAST_ALPHA, pastFade, type Warp, type WarpFn, warpAxis } from "./transform";
 
 const NOW = 1_750_000_000_000;
 const DAY = 86_400_000;
@@ -27,7 +27,7 @@ describe("warpAxis", () => {
       for (const strength of [0, 0.35, 0.7, 1]) {
         const axis = makeAxis({ fn, strength });
         for (let i = 1; i < 200; i++) {
-          const t = NOW - 4 * DAY + ((i / 200) * (4 + 7)) * DAY;
+          const t = NOW - 4 * DAY + (i / 200) * (4 + 7) * DAY;
           expect(Math.abs(axis.x2t(axis.t2x(t)) - t)).toBeLessThan(60_000);
         }
         for (let x = 0; x <= 1000; x += 25) {
@@ -48,7 +48,7 @@ describe("warpAxis", () => {
       const axis = makeAxis({ fn, strength: 0.5 });
       let prev = -Infinity;
       for (let i = 0; i <= 400; i++) {
-        const x = axis.t2x(NOW - 4 * DAY + ((i / 400) * (4 + 7)) * DAY);
+        const x = axis.t2x(NOW - 4 * DAY + (i / 400) * (4 + 7) * DAY);
         expect(x).toBeGreaterThanOrEqual(prev);
         prev = x;
       }

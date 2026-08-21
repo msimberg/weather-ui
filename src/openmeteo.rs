@@ -57,7 +57,9 @@ impl OpenMeteoClient {
             .timeout(Duration::from_secs(30))
             .build()
             .expect("reqwest client construction failed");
-        OpenMeteoClient { inner: Arc::new(Inner { http }) }
+        OpenMeteoClient {
+            inner: Arc::new(Inner { http }),
+        }
     }
 
     /// Fetch the complete forecast for a point: hourly, daily, current,
@@ -82,27 +84,39 @@ impl OpenMeteoClient {
              &wind_speed_unit={wind_speed_unit}\
              &precipitation_unit={precipitation_unit}"
         );
-        let resp = self.inner.http.get(&url).send().await.map_err(|e| UpstreamError::Network {
-            service: "open-meteo",
-            detail: e.to_string(),
-        })?;
+        let resp = self
+            .inner
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service: "open-meteo",
+                detail: e.to_string(),
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             let excerpt: String = body.chars().take(200).collect();
-            return Err(UpstreamError::Status { status, service: "open-meteo", detail: excerpt });
+            return Err(UpstreamError::Status {
+                status,
+                service: "open-meteo",
+                detail: excerpt,
+            });
         }
-        resp.json::<Value>().await.map_err(|e| UpstreamError::Network {
-            service: "open-meteo",
-            detail: e.to_string(),
-        })
+        resp.json::<Value>()
+            .await
+            .map_err(|e| UpstreamError::Network {
+                service: "open-meteo",
+                detail: e.to_string(),
+            })
     }
 }
 
-/// Open-Meteo unit triple per Dark Sky units value. si is celsius + m/s
-/// + mm; ca swaps wind to km/h; us goes imperial; uk/uk2 keep celsius + mm
-/// but use mph wind. Visibility stays meters upstream and is converted
-/// in the translator.
+/// Open-Meteo unit triple per Dark Sky units value: si returns celsius,
+/// m/s wind, and mm precip; ca returns km/h wind; us returns imperial;
+/// uk/uk2 return celsius with mph wind. Visibility remains meters upstream
+/// and is converted in the translator.
 fn om_units(units: &str) -> (&'static str, &'static str, &'static str) {
     match units {
         "us" => ("fahrenheit", "mph", "inch"),
@@ -135,10 +149,22 @@ fn convert_accumulation(sum: f64, units: &str) -> f64 {
 /// WMO weather code -> (summary, icon-day, icon-night, precip-type).
 /// Icon names follow the Dark Sky vocabulary so the frontend icon set and
 /// tooltips need no changes.
-fn weather_code(code: i64) -> (&'static str, &'static str, &'static str, Option<&'static str>) {
+fn weather_code(
+    code: i64,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<&'static str>,
+) {
     match code {
         0 | 1 => ("Clear sky", "clear-day", "clear-night", None),
-        2 => ("Partly cloudy", "partly-cloudy-day", "partly-cloudy-night", None),
+        2 => (
+            "Partly cloudy",
+            "partly-cloudy-day",
+            "partly-cloudy-night",
+            None,
+        ),
         3 => ("Overcast", "cloudy", "cloudy", None),
         45 | 48 => ("Fog", "fog", "fog", None),
         51 => ("Light drizzle", "drizzle", "drizzle", Some("rain")),
@@ -153,7 +179,12 @@ fn weather_code(code: i64) -> (&'static str, &'static str, &'static str, Option<
         73 | 86 => ("Snow", "snow", "snow", Some("snow")),
         75 => ("Heavy snow", "snow", "snow", Some("snow")),
         95 => ("Thunderstorm", "thunderstorm", "thunderstorm", Some("rain")),
-        96 | 99 => ("Thunderstorm with hail", "thunderstorm", "thunderstorm", Some("hail")),
+        96 | 99 => (
+            "Thunderstorm with hail",
+            "thunderstorm",
+            "thunderstorm",
+            Some("hail"),
+        ),
         _ => ("Unknown", "cloudy", "cloudy", None),
     }
 }
@@ -185,13 +216,14 @@ fn splice_block(
         let mut slot = Map::new();
         slot.insert("time".to_string(), t.clone());
         let is_day = match hourly_context {
-            Some(h) => h
-                .get("is_day")
-                .and_then(Value::as_array)
-                .and_then(|a| a.get(i))
-                .and_then(Value::as_f64)
-                .unwrap_or(1.0)
-                > 0.0,
+            Some(h) => {
+                h.get("is_day")
+                    .and_then(Value::as_array)
+                    .and_then(|a| a.get(i))
+                    .and_then(Value::as_f64)
+                    .unwrap_or(1.0)
+                    > 0.0
+            }
             None => true, // daily icons are always the day variant
         };
         for (k, arr) in &arrays {
@@ -205,34 +237,62 @@ fn splice_block(
 }
 
 const HOURLY_KEYS: &[&str] = &[
-    "temperature_2m", "apparent_temperature", "relative_humidity_2m", "dewpoint_2m",
-    "precipitation_probability", "precipitation", "rain", "showers", "snowfall",
-    "weather_code", "pressure_msl", "cloudcover", "cloudcover_low", "cloudcover_mid",
-    "cloudcover_high", "visibility", "wind_speed_10m", "wind_direction_10m",
-    "wind_gusts_10m", "uv_index", "is_day",
+    "temperature_2m",
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "dewpoint_2m",
+    "precipitation_probability",
+    "precipitation",
+    "rain",
+    "showers",
+    "snowfall",
+    "weather_code",
+    "pressure_msl",
+    "cloudcover",
+    "cloudcover_low",
+    "cloudcover_mid",
+    "cloudcover_high",
+    "visibility",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "wind_gusts_10m",
+    "uv_index",
+    "is_day",
 ];
 
 fn map_hour_slot(slot: &mut Map<String, Value>, k: &str, f: f64, units: &str, is_day: bool) {
     match k {
-        "temperature_2m" => slot.insert("temperature".to_string(), json!(f)),
-        "apparent_temperature" => slot.insert("apparentTemperature".to_string(), json!(f)),
-        "relative_humidity_2m" => slot.insert("humidity".to_string(), json!(f / 100.0)),
-        "dewpoint_2m" => slot.insert("dewPoint".to_string(), json!(f)),
-        "precipitation_probability" => slot.insert("precipProbability".to_string(), json!(f / 100.0)),
+        "temperature_2m" => {
+            slot.insert("temperature".to_string(), json!(f));
+        }
+        "apparent_temperature" => {
+            slot.insert("apparentTemperature".to_string(), json!(f));
+        }
+        "relative_humidity_2m" => {
+            slot.insert("humidity".to_string(), json!(f / 100.0));
+        }
+        "dewpoint_2m" => {
+            slot.insert("dewPoint".to_string(), json!(f));
+        }
+        "precipitation_probability" => {
+            slot.insert("precipProbability".to_string(), json!(f / 100.0));
+        }
         "precipitation" => {
             slot.insert("precipIntensity".to_string(), json!(f));
-            slot.insert("liquidAccumulation".to_string(), json!(f))
+            slot.insert("liquidAccumulation".to_string(), json!(f));
         }
         "rain" | "showers" => {
             if f > 0.0 {
-                let prev = slot.get("rainIntensity").and_then(Value::as_f64).unwrap_or(0.0);
+                let prev = slot
+                    .get("rainIntensity")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
                 slot.insert("rainIntensity".to_string(), json!(prev + f));
             }
-            return;
         }
         "snowfall" => {
             slot.insert("snowIntensity".to_string(), json!(f));
-            slot.insert("snowAccumulation".to_string(), json!(f))
+            slot.insert("snowAccumulation".to_string(), json!(f));
         }
         "weather_code" => {
             let (summary, day, night, ptype) = weather_code(f as i64);
@@ -243,24 +303,49 @@ fn map_hour_slot(slot: &mut Map<String, Value>, k: &str, f: f64, units: &str, is
                     slot.insert("precipType".to_string(), json!(p));
                 }
             }
-            return;
         }
-        "pressure_msl" => slot.insert("pressure".to_string(), json!(f)),
-        "cloudcover" => slot.insert("cloudCover".to_string(), json!(f / 100.0)),
-        "visibility" => slot.insert("visibility".to_string(), json!(convert_visibility(f, units))),
-        "wind_speed_10m" => slot.insert("windSpeed".to_string(), json!(f)),
-        "wind_direction_10m" => slot.insert("windBearing".to_string(), json!(f)),
-        "wind_gusts_10m" => slot.insert("windGust".to_string(), json!(f)),
-        "uv_index" => slot.insert("uvIndex".to_string(), json!(f)),
-        _ => return,
-    };
+        "pressure_msl" => {
+            slot.insert("pressure".to_string(), json!(f));
+        }
+        "cloudcover" => {
+            slot.insert("cloudCover".to_string(), json!(f / 100.0));
+        }
+        "visibility" => {
+            slot.insert(
+                "visibility".to_string(),
+                json!(convert_visibility(f, units)),
+            );
+        }
+        "wind_speed_10m" => {
+            slot.insert("windSpeed".to_string(), json!(f));
+        }
+        "wind_direction_10m" => {
+            slot.insert("windBearing".to_string(), json!(f));
+        }
+        "wind_gusts_10m" => {
+            slot.insert("windGust".to_string(), json!(f));
+        }
+        "uv_index" => {
+            slot.insert("uvIndex".to_string(), json!(f));
+        }
+        _ => (),
+    }
 }
 
 const DAILY_KEYS: &[&str] = &[
-    "weather_code", "temperature_2m_max", "temperature_2m_min",
-    "apparent_temperature_max", "apparent_temperature_min", "sunrise", "sunset",
-    "moon_phase", "uv_index_max", "precipitation_sum", "precipitation_probability_max",
-    "wind_speed_10m_max", "wind_gusts_10m_max",
+    "weather_code",
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "apparent_temperature_max",
+    "apparent_temperature_min",
+    "sunrise",
+    "sunset",
+    "moon_phase",
+    "uv_index_max",
+    "precipitation_sum",
+    "precipitation_probability_max",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
 ];
 
 fn map_day_slot(slot: &mut Map<String, Value>, k: &str, f: f64, units: &str, _is_day: bool) {
@@ -272,33 +357,51 @@ fn map_day_slot(slot: &mut Map<String, Value>, k: &str, f: f64, units: &str, _is
             if let Some(p) = ptype {
                 slot.insert("precipType".to_string(), json!(p));
             }
-            return;
         }
         "temperature_2m_max" => {
             slot.insert("temperatureHigh".to_string(), json!(f));
-            slot.insert("temperatureMax".to_string(), json!(f))
+            slot.insert("temperatureMax".to_string(), json!(f));
         }
         "temperature_2m_min" => {
             slot.insert("temperatureLow".to_string(), json!(f));
-            slot.insert("temperatureMin".to_string(), json!(f))
+            slot.insert("temperatureMin".to_string(), json!(f));
         }
-        "apparent_temperature_max" => slot.insert("apparentTemperatureHigh".to_string(), json!(f)),
-        "apparent_temperature_min" => slot.insert("apparentTemperatureLow".to_string(), json!(f)),
+        "apparent_temperature_max" => {
+            slot.insert("apparentTemperatureHigh".to_string(), json!(f));
+        }
+        "apparent_temperature_min" => {
+            slot.insert("apparentTemperatureLow".to_string(), json!(f));
+        }
         // Times stay integers, matching Dark Sky convention.
-        "sunrise" => slot.insert("sunriseTime".to_string(), json!(f as i64)),
-        "sunset" => slot.insert("sunsetTime".to_string(), json!(f as i64)),
-        "moon_phase" => slot.insert("moonPhase".to_string(), json!(f)),
-        "uv_index_max" => slot.insert("uvIndexMax".to_string(), json!(f)),
+        "sunrise" => {
+            slot.insert("sunriseTime".to_string(), json!(f as i64));
+        }
+        "sunset" => {
+            slot.insert("sunsetTime".to_string(), json!(f as i64));
+        }
+        "moon_phase" => {
+            slot.insert("moonPhase".to_string(), json!(f));
+        }
+        "uv_index_max" => {
+            slot.insert("uvIndexMax".to_string(), json!(f));
+        }
         "precipitation_sum" => {
-            slot.insert("precipAccumulation".to_string(), json!(convert_accumulation(f, units)))
+            slot.insert(
+                "precipAccumulation".to_string(),
+                json!(convert_accumulation(f, units)),
+            );
         }
         "precipitation_probability_max" => {
-            slot.insert("precipProbability".to_string(), json!(f / 100.0))
+            slot.insert("precipProbability".to_string(), json!(f / 100.0));
         }
-        "wind_speed_10m_max" => slot.insert("windSpeed".to_string(), json!(f)),
-        "wind_gusts_10m_max" => slot.insert("windGust".to_string(), json!(f)),
-        _ => return,
-    };
+        "wind_speed_10m_max" => {
+            slot.insert("windSpeed".to_string(), json!(f));
+        }
+        "wind_gusts_10m_max" => {
+            slot.insert("windGust".to_string(), json!(f));
+        }
+        _ => (),
+    }
 }
 
 /// `currently` is synthesized from the hourly slot containing current.time
@@ -309,8 +412,8 @@ fn synthesize_currently(om: &Value, hourly: &[Value]) -> Value {
     let now_t = current.get("time").and_then(Value::as_f64).unwrap_or(0.0);
     let mut base = hourly
         .iter()
-        .filter(|h| h.get("time").and_then(Value::as_f64).unwrap_or(0.0) <= now_t)
-        .last()
+        .rev()
+        .find(|h| h.get("time").and_then(Value::as_f64).unwrap_or(0.0) <= now_t)
         .cloned()
         .unwrap_or_else(|| json!({}));
     let obj = base.as_object_mut().expect("hour point is an object");
@@ -360,8 +463,16 @@ fn to_minutely(om: &Value) -> Value {
     // Keep [now, now+2h]: the current slot plus eight 15-minute nowcasts.
     let lo = now_t;
     let hi = now_t + 2.0 * 3600.0;
-    let times = block.get("time").and_then(Value::as_array).cloned().unwrap_or_default();
-    let precip = block.get("precipitation").and_then(Value::as_array).cloned().unwrap_or_default();
+    let times = block
+        .get("time")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let precip = block
+        .get("precipitation")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let prob = block
         .get("precipitation_probability")
         .and_then(Value::as_array)
@@ -457,7 +568,13 @@ pub fn to_dark_sky(om: &Value, units: &str) -> Value {
     let timezone = om.get("timezone").and_then(Value::as_str).unwrap_or("UTC");
     let offset = om.get("utc_offset_seconds").and_then(f64_at).unwrap_or(0.0) / 3600.0;
     let hourly_raw = om.get("hourly").cloned().unwrap_or_else(|| json!({}));
-    let hourly_data = splice_block(&hourly_raw, HOURLY_KEYS, units, map_hour_slot, Some(&hourly_raw));
+    let hourly_data = splice_block(
+        &hourly_raw,
+        HOURLY_KEYS,
+        units,
+        map_hour_slot,
+        Some(&hourly_raw),
+    );
     let mut daily_data = splice_block(
         om.get("daily").unwrap_or(&Value::Null),
         DAILY_KEYS,
@@ -578,7 +695,10 @@ mod tests {
         f["hourly"]["is_day"] = json!([0, 0]);
         f["hourly"]["weather_code"] = json!([2, 2]);
         let doc = to_dark_sky(&f, "si");
-        assert_eq!(doc["hourly"]["data"][0]["icon"], json!("partly-cloudy-night"));
+        assert_eq!(
+            doc["hourly"]["data"][0]["icon"],
+            json!("partly-cloudy-night")
+        );
     }
 
     #[test]
