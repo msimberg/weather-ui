@@ -255,7 +255,7 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         };
         match fetch_pirate(&state, q.lat, lon, &req).await {
             Ok(doc) => doc,
-            Err(e) => return e.into_response(),
+            Err(e) => return (*e).into_response(),
         }
     };
     state
@@ -284,7 +284,7 @@ async fn fetch_pirate(
     lat: f64,
     lon: f64,
     req: &PirateFetch<'_>,
-) -> Result<Value, Response> {
+) -> Result<Value, Box<Response>> {
     let PirateFetch {
         past_days,
         units,
@@ -305,7 +305,7 @@ async fn fetch_pirate(
         Ok(v) => v,
         Err(e) => {
             tracing::error!(error = %e, "forecast request failed");
-            return Err(upstream_failure(&e).into_response());
+            return Err(Box::new(upstream_failure(&e).into_response()));
         }
     };
 
