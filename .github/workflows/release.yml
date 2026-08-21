@@ -88,7 +88,7 @@ jobs:
           (cd dist && sha256sum "${pkg}.tar.gz" > "${pkg}.tar.gz.sha256")
           file "dist/$pkg/weather-ui"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.name }}
           path: dist/*.tar.gz*
@@ -135,7 +135,7 @@ jobs:
           mkdir -p digests
           cp digest.txt "digests/${{ matrix.arch }}.txt"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.arch }}
           path: digests/${{ matrix.arch }}.txt
