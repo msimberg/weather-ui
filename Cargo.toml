@@ -1,6 +1,6 @@
 [package]
 name = "weather-ui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Weather dashboard with a fisheye time axis, backed by Pirate Weather"
 license = "MIT OR Apache-2.0"
