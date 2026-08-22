@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Build-only; if this passes, a push of the same Dockerfile will too.
       - uses: docker/build-push-action@v7
