@@ -3,6 +3,7 @@
 
 import type { DayGroup, Prepared } from "../prepare";
 import { formatHour, localHour } from "../time";
+import { windBandY } from "./bands";
 import type { BandRect, Layout } from "./layout";
 import { bandY, type Ctx, interpAt, labelHalo } from "./paint";
 import { type Palette, uiFont } from "./palette";
@@ -419,7 +420,7 @@ export function drawCrosshair(
   if (wb) {
     dot(
       interpAt(model.hours, hoverSec, (h) => h.windSpeed),
-      (v) => bandY(wb, v / model.domains.windMax),
+      (v) => windBandY(wb, v, model.domains.windMax, palette.lineScale),
       palette.wind,
       3,
     );

@@ -59,15 +59,6 @@ export interface Prepared {
   fetchedAtSec: number;
 }
 
-/** Next power-friendly tick step, e.g. 12.3 -> 20, 53 -> 100. */
-export function niceCeil(v: number): number {
-  if (v <= 0 || !Number.isFinite(v)) return 1;
-  const mag = 10 ** Math.floor(Math.log10(v));
-  const frac = v / mag;
-  const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
-  return nice * mag;
-}
-
 export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
   const tz = payload.timezone;
   const hours = (payload.hourly?.data ?? []).slice().sort((a, b) => a.time - b.time);
@@ -115,6 +106,11 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
   let windMax = 0;
   let precipMax = 0;
   let uvMax = 0;
+  // Collect gusts/speeds across the whole range so the wind band can be
+  // scaled by a percentile instead of a single outlier: with a calm location
+  // and one dominant far-future gust, the global max stretches the scale so
+  // the visible line hugs the bottom with a large empty band above.
+  const windSamples: number[] = [];
   const widen = (v: number | undefined, lo: boolean) => {
     if (v === undefined || Number.isNaN(v)) return;
     if (lo) tempLo = Math.min(tempLo, v);
@@ -125,7 +121,10 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     widen(h.temperature, false);
     widen(h.apparentTemperature, true);
     widen(h.apparentTemperature, false);
-    windMax = Math.max(windMax, h.windGust ?? 0, h.windSpeed ?? 0);
+    const g = h.windGust ?? 0;
+    const s = h.windSpeed ?? 0;
+    if (g > 0) windSamples.push(g);
+    if (s > 0) windSamples.push(s);
     precipMax = Math.max(precipMax, h.precipIntensity ?? 0);
     if (h.uvIndex !== undefined) uvMax = Math.max(uvMax, h.uvIndex);
   }
@@ -139,10 +138,19 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     tempLo = 0;
     tempHi = 1;
   }
-  const margin = Math.max(1.5, (tempHi - tempLo) * 0.08);
+  const margin = Math.max(1.0, (tempHi - tempLo) * 0.08);
   tempLo -= margin;
   tempHi += margin;
-
+  // Wind band scale = 95th percentile of all gust/speed samples, not the
+  // global max. A single dominant far-future gust (often faded to 0.35 alpha
+  // at the compressed edge) otherwise stretches the scale so the visible line
+  // hugs the bottom. The 95th keeps the bulk of the range; rare outliers above
+  // it clip at the top of the data area (the renderer clamps) instead of
+  // shrinking everything below.
+  windMax =
+    windSamples.length > 0
+      ? windSamples.slice().sort((a, b) => a - b)[Math.floor(windSamples.length * 0.95)]
+      : 0;
   return {
     timezone: tz,
     offsetH: payload.offset,
@@ -156,10 +164,15 @@ export function prepare(payload: WeatherPayload, nowSec: number): Prepared {
     domains: {
       tempLo,
       tempHi,
-      windMax: niceCeil(windMax * 1.05 || 1),
+      // 95th percentile (computed above) plus 10% headroom so values near it
+      // don't sit exactly at the band top; rare gusts above clip there. The
+      // wind band uses a sqrt display scale, so this only sets the bar at
+      // which a value saturates.
+      windMax: windMax * 1.1 || 1,
       // sqrt display scale: the domain only sets the bar at which a value
-      // saturates visually.
-      precipMax: Math.max(precipMax, 2.5),
+      // saturates visually. The floor is low so light rain still fills most of
+      // the band instead of sitting at the bottom with empty space above.
+      precipMax: Math.max(precipMax, 1.0),
       uvMax: Math.max(uvMax + 1, 3),
     },
     currently: payload.currently,
