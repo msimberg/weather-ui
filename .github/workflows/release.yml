@@ -127,6 +127,9 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            SOURCE_DATE_EPOCH=${{ github.event.head_commit.timestamp || '' }}
           # Push by digest; tags are created in the merge step.
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: |

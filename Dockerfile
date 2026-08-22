@@ -15,8 +15,15 @@ WORKDIR /b
 RUN apk add --no-cache musl-dev
 COPY Cargo.toml Cargo.lock ./
 # Build dependencies first for layer caching; the dummy main is replaced below.
-RUN mkdir src && echo 'fn main() {}' > src/main.rs && cargo build --release && rm -rf src
+COPY build.rs ./
+RUN mkdir src && touch build.rs && echo 'fn main() {}' > src/main.rs && cargo build --release && rm -rf src
 COPY src ./src
+COPY build.rs ./
+# .git is dockerignored, so the commit hash comes in as a build arg; build.rs
+# prefers git describe when available and falls back to this.
+ARG GIT_SHA=unknown
+ARG SOURCE_DATE_EPOCH=""
+ENV GIT_SHA=${GIT_SHA} SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN touch src/main.rs && cargo build --release
 
 FROM alpine:3.24

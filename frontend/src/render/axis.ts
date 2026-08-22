@@ -108,12 +108,16 @@ function drawDayRow(
     if (w < DAY_MIN_SPAN) continue;
     const cx = (x0 + x1) / 2;
     if (rotate[i]) {
-      // Emanate from the day midpoint: the text starts there and climbs
-      // outward at a steep angle, instead of being centered-then-tilted.
+      // Both rows rotate the same way (text climbs up-right of the anchor),
+      // so the bottom row reads bottom-to-top like the top row and the
+      // band-side labels. Top row: left edge at the day midpoint, text
+      // goes up. Bottom row: right edge at the midpoint, same angle, so
+      // the text goes down -- deliberately asymmetric in x, symmetric in
+      // reading direction.
       ctx.save();
       ctx.translate(cx, y);
-      ctx.rotate(belowBand ? DAY_ROTATE_ANGLE : -DAY_ROTATE_ANGLE);
-      ctx.textAlign = "left";
+      ctx.rotate(-DAY_ROTATE_ANGLE);
+      ctx.textAlign = belowBand ? "right" : "left";
       ctx.textBaseline = "middle";
       ctx.fillText(rotatedDayLabel(g), 0, 0);
       ctx.restore();

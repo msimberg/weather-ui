@@ -1,6 +1,7 @@
 import { createEffect, onCleanup, onMount, Show } from "solid-js";
 
 import { Alerts } from "./components/Alerts";
+import { BuildInfoChip } from "./components/BuildInfoChip";
 import { CurrentStrip, SunStrip } from "./components/CurrentStrip";
 import { SearchBar } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -43,6 +44,7 @@ export function App() {
       <SunStrip />
       <Timeline />
       <footer>
+        <BuildInfoChip />
         <Show when={model()} keyed>
           {(m) => (
             <>

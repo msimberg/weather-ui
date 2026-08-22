@@ -373,7 +373,26 @@ async fn health() -> Json<Value> {
         "ok": true,
         // Lets a deploy verify which version is actually serving.
         "version": env!("CARGO_PKG_VERSION"),
+        "commit": env!("BUILD_COMMIT"),
+        "built": env!("BUILD_DATE"),
     }))
+}
+
+#[cfg(test)]
+mod health_meta_tests {
+    #[test]
+    fn health_metadata_format() {
+        // build.rs emits "YYYY-MM-DD HH:MMZ".
+        let built = env!("BUILD_DATE");
+        assert_eq!(built.len(), 17, "unexpected build date format: {built:?}");
+        assert!(built.ends_with('Z'));
+        let (date, time) = built.split_at(10);
+        assert_eq!(&date[4..5], "-");
+        assert!(time.trim_end_matches('Z').contains(':'));
+        // Version and commit are non-empty.
+        assert!(!env!("CARGO_PKG_VERSION").is_empty());
+        assert!(!env!("BUILD_COMMIT").is_empty());
+    }
 }
 
 async fn geocode(State(state): State<AppState>, Query(q): Query<GeoQuery>) -> Response {
