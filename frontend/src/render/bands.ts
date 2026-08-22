@@ -3,6 +3,7 @@
 
 import { formatTemp, windUnit } from "../format";
 import type { Prepared } from "../prepare";
+import { clamp01 } from "../transform";
 import type { HourPoint, Units } from "../types";
 import { BAND_PAD, type BandRect } from "./layout";
 import {
@@ -10,7 +11,6 @@ import {
   type Ctx,
   clampX,
   type GreedyLabels,
-  hexToRgb,
   interpSeries,
   labelHalo,
   lineFade,
@@ -278,9 +278,13 @@ export function drawTemp(
     ctx.arc(xl, y(lo), 2.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.textBaseline = "bottom";
-    ctx.fillText(formatTemp(hi), xh, y(hi) - 3);
+    labelHalo(ctx, formatTemp(hi), xh, y(hi) - 3, palette.bg, 90);
+    ctx.fillStyle = palette.hiLo;
+    ctx.fillText(formatTemp(hi), xh, y(hi) - 3, 90);
     ctx.textBaseline = "top";
-    ctx.fillText(formatTemp(lo), xl, y(lo) + 3);
+    labelHalo(ctx, formatTemp(lo), xl, y(lo) + 3, palette.bg, 90);
+    ctx.fillStyle = palette.hiLo;
+    ctx.fillText(formatTemp(lo), xl, y(lo) + 3, 90);
   }
   ctx.globalAlpha = 1;
 }
@@ -296,6 +300,16 @@ function toKnots(speed: number, units: Units): number {
     default:
       return speed * 0.868_976;
   }
+}
+/** Map a wind value to the band's Y axis, used by both the speed/gust line
+ * and the hover crosshair dot so they never diverge. Linear in the value
+ * (the windMax domain is the 95th percentile, set in prepare.ts, so the top
+ * fills without a warp); a fixed top margin reserves room for the daily
+ * max-gust label. */
+export function windBandY(band: BandRect, v: number, windMax: number, lineScale: number): number {
+  const labelTop = 15 * lineScale;
+  const dataDepth = band.y1 - band.y0 - 2 * BAND_PAD - labelTop;
+  return band.y1 - BAND_PAD - clamp01(v / windMax) * dataDepth;
 }
 
 /** WMO station-model wind barb with a bg-colored halo so it reads against
@@ -377,7 +391,12 @@ export function drawWind(
   right: number,
 ) {
   const { palette } = env;
-  const y = (v: number): number => bandY(band, v / model.domains.windMax);
+  // Linear mapping with a fixed top margin for the max-gust label. The domain
+  // is the 95th percentile (see prepare.ts), so the top fills without a sqrt
+  // warp -- which would push low wind up and leave a gap at the bottom, and
+  // (used only on the line) made the hover dot sit off the line. The crosshair
+  // uses the same windBandY so the dot always sits on the line.
+  const y = (v: number): number => windBandY(band, v, model.domains.windMax, palette.lineScale);
 
   const gustPts: Pt[] = [];
   const speedPts: Pt[] = [];
@@ -443,33 +462,82 @@ export function drawWind(
     ctx.arc(x, yy, 2.4, 0, Math.PI * 2);
     ctx.fill();
     const text = `${best.toFixed(0)} ${windUnit(env.units)}`;
-    labelHalo(ctx, text, x, yy - 5, palette.bg);
+    // Clamp the label inside the band: when this day's gust clips at the top
+    // (a rare outlier above the 95th-percentile domain), yy sits at the data
+    // ceiling and the label above it would run into the divider; instead it
+    // drops to just inside the band's padded top.
+    const labelY = Math.max(yy - 5, band.y0 + BAND_PAD + 12);
+    labelHalo(ctx, text, x, labelY, palette.bg);
     ctx.fillStyle = palette.sub;
-    ctx.fillText(text, x, yy - 5);
+    ctx.fillText(text, x, labelY);
   }
   ctx.globalAlpha = 1;
 }
 
 // --- cloud / UV -------------------------------------------------------------
 
-// The three altitude lanes (low/mid/high cloud) sit at these fractional
-// positions of the band; coverages smear with a wider falloff so the mass
-// reads as one continuous gray profile, not three stacked rows.
-const LANE_CENTERS = [0.16, 0.5, 0.84] as const;
-// Vertical smear half-width (fraction of band height). 0.33 sits between
-// the original 0.22 (lanes read as separate rows) and 0.44 (fully soft).
-const LANE_HALF_WIDTH = 0.33;
-// Offscreen buffer resolution: one column per 3 px, 40 altitude rows; drawn
-// scaled up with smoothing for a single bilinear-blurred mass.
-const CLOUD_ROWS = 40;
-const CLOUD_COL_STEP = 3;
-// Cloud opacity scale. Higher than in previous iterations so density stays
-// readable; the past fade still multiplies on top.
-const CLOUD_ALPHA = 0.8;
+// Three altitude lanes (low/mid/high cloud) as fractional positions of the
+// band. Per-level soft ellipses are drawn around these centres, so each
+// altitude reads at its own height while the lanes overlap where coverage
+// is high.
+const LANE_CENTERS = [0.25, 0.5, 0.75] as const;
+// Per-level horizontal length and vertical thickness multipliers (low =
+// short and thick like cumulus, high = long and thin like cirrus, mid
+// between). Chosen look from the cloud-variants exploration; see
+// wiki/weather-ui/cloud-visualization-exploration.md.
+const CLOUD_LEN = [2.6, 1.7, 1.0] as const;
+const CLOUD_THICK = [0.4, 0.75, 1.2] as const;
+// Ellipse sample stride (px), coverage divisor (how many ellipses per
+// sample), minimum overlap, base alpha, vertical size, lane-middle density
+// falloff, and how far each lane drifts up/down over time.
+const CLOUD_STEP = 6.5;
+const CLOUD_DIV = 9;
+const CLOUD_OVERLAP = 4;
+const CLOUD_ALPHA = 0.4;
+const CLOUD_VSIZE = 0.062;
+const CLOUD_VFALLOFF = 0.11;
+const CLOUD_VMOTION = 0.045;
+const CLOUD_ROT_HIGH = 0.06;
+const CLOUD_ROT_OTHER = 0.22;
 // UV labels skip the low index values where the line is flat against the floor.
 const UV_LABEL_MIN = 3;
 
-let cloudBuf: HTMLCanvasElement | null = null;
+function gauss(p: number, c: number, sigma: number): number {
+  const d = (p - c) / sigma;
+  return Math.exp(-d * d);
+}
+
+// Cheap continuous value noise in [0,1] for the slow lane drift.
+function cloudNoise(x: number, y: number): number {
+  const hash = (hx: number, hy: number) => {
+    let h = (hx * 374761393 + hy * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  };
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi);
+  const b = hash(xi + 1, yi);
+  const c = hash(xi, yi + 1);
+  const d = hash(xi + 1, yi + 1);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+// Deterministic PRNG so a given hour+altitude renders the same shapes every
+// frame (no shimmer) while the field still looks organic.
+function cloudRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export function drawCloud(
   ctx: Ctx,
@@ -501,50 +569,50 @@ export function drawCloud(
     interpSeries(midTimes, loVals, tSec),
   ];
 
-  // All three lanes share one gray; the only thing that varies is the
-  // combined coverage, so cloud reads as a single gray mass whose density
-  // tracks how much cloud is overhead (not which altitude it is at).
-  const [cg, cgr, cgb] = hexToRgb(palette.cloudInk);
-
+  // Hybrid dense: per-level soft, horizontally-elongated ellipses sampled
+  // at uniform screen spacing (fisheye-proof), denser in each lane's
+  // vertical middle than its edges, with the lane centres drifting a little
+  // over time so adjacent lanes overlap. Clipped to the band so the
+  // ellipses cannot leak into the neighbouring bands.
+  const ink = palette.cloudInk;
   const x0px = Math.ceil(X(model.hours[0].time));
   const x1px = Math.floor(X(model.hours[model.hours.length - 1].time));
-  const cw = Math.max(1, x1px - x0px);
-  const OW = Math.max(2, Math.ceil(cw / CLOUD_COL_STEP));
-  if (!cloudBuf || cloudBuf.width !== OW || cloudBuf.height !== CLOUD_ROWS) {
-    cloudBuf = document.createElement("canvas");
-    cloudBuf.width = OW;
-    cloudBuf.height = CLOUD_ROWS;
-  }
-  const octx = cloudBuf.getContext("2d");
-  if (octx) {
-    const img = octx.createImageData(OW, CLOUD_ROWS);
-    for (let px = 0; px < OW; px++) {
-      const cx = x0px + (px / (OW - 1)) * cw;
-      const tSec = tAtX(cx);
-      const f = fade(tSec);
-      const [cHi, cMid, cLow] = cov(tSec);
-      for (let py = 0; py < CLOUD_ROWS; py++) {
-        const p = py / (CLOUD_ROWS - 1);
-        const wHi = Math.max(0, 1 - Math.abs(p - LANE_CENTERS[0]) / LANE_HALF_WIDTH);
-        const wMid = Math.max(0, 1 - Math.abs(p - LANE_CENTERS[1]) / LANE_HALF_WIDTH);
-        const wLow = Math.max(0, 1 - Math.abs(p - LANE_CENTERS[2]) / LANE_HALF_WIDTH);
-        const sh = wHi * cHi;
-        const sm = wMid * cMid;
-        const sl = wLow * cLow;
-        const a = clamp01local((sh + sm + sl) / (wHi + wMid + wLow || 1) / 100) * CLOUD_ALPHA * f;
-        const idx = (py * OW + px) * 4;
-        img.data[idx] = cg;
-        img.data[idx + 1] = cgr;
-        img.data[idx + 2] = cgb;
-        img.data[idx + 3] = (a * 255) | 0;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0px, y0, Math.max(1, x1px - x0px), depth);
+  ctx.clip();
+  for (let x = x0px; x < x1px; x += CLOUD_STEP) {
+    const tSec = tAtX(x);
+    const f = fade(tSec);
+    const cs = cov(tSec);
+    for (let li = 0; li < 3; li++) {
+      const c = cs[li];
+      if (c < 4) continue;
+      const drift = (cloudNoise((tSec / 3600) * 0.02 + li * 31.7, 0) - 0.5) * 2 * CLOUD_VMOTION;
+      const cy = y0 + (LANE_CENTERS[li] + drift) * depth;
+      const n = Math.max(CLOUD_OVERLAP, Math.round(c / CLOUD_DIV));
+      const gen = cloudRng((x | 0) * 7 + li * 131 + (tSec | 0) + 1);
+      for (let k = 0; k < n; k++) {
+        const jx = (gen() - 0.5) * CLOUD_STEP * 1.5;
+        const jy = (gen() - 0.5) * 2 * CLOUD_VFALLOFF * depth;
+        const falloff = gauss(jy / depth, 0, CLOUD_VFALLOFF);
+        const rx = CLOUD_STEP * CLOUD_LEN[li] * (0.7 + gen() * 0.6);
+        const ry = depth * CLOUD_VSIZE * CLOUD_THICK[li] * (0.7 + gen() * 0.6);
+        const rot = (gen() - 0.5) * (li === 0 ? CLOUD_ROT_HIGH : CLOUD_ROT_OTHER);
+        const cx = x + jx;
+        const cyx = cy + jy;
+        const grad = ctx.createRadialGradient(cx, cyx, 0, cx, cyx, Math.max(rx, ry));
+        grad.addColorStop(0, ink);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = clamp01(c / 100) * CLOUD_ALPHA * falloff * f;
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(cx, cyx, rx, ry, rot, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
-    octx.putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(cloudBuf, 0, 0, OW, CLOUD_ROWS, x0px, y0, cw, depth);
-    ctx.imageSmoothingQuality = "low";
   }
+  ctx.restore();
   ctx.globalAlpha = 1;
 
   // UV index as a discrete step function, scaled so the data peak fills the
@@ -617,8 +685,4 @@ export function drawCloud(
     ctx.fillText(text, cx, uvY(maxV) - 2);
   }
   ctx.globalAlpha = 1;
-}
-
-function clamp01local(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
