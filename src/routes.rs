@@ -160,8 +160,10 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
         return bad_request("lang must be a short language code").into_response();
     }
     if !PROVIDERS.contains(&provider.as_str()) {
-        return bad_request("provider must be one of openmeteo, pirateweather, meteoblue")
-            .into_response();
+        return bad_request(
+            "provider must be one of openmeteo, pirateweather, meteoblue, meteoswiss",
+        )
+        .into_response();
     }
 
     let exclude = q.exclude.unwrap_or_default();
