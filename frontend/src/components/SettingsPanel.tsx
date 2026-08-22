@@ -52,6 +52,10 @@ export function SettingsPanel() {
       id: "pirateweather",
       note: "Pirate Weather (Dark Sky): multi-model blend with richer US fields; needs a server-side API key.",
     },
+    {
+      id: "meteoswiss",
+      note: "MeteoSwiss local point forecast (Switzerland only, CC BY 4.0): official Swiss temperature, wind, precip, and pictogram; Open-Meteo fills UV, humidity, and the rest. Keyless but one large download per location per hour.",
+    },
   ];
 
   const toggleModel = (id: string, excluded: boolean) => {
