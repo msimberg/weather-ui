@@ -627,11 +627,27 @@ export function drawCloud(
   }
   const path = () => {
     if (uvPts.length < 2) return;
+    // Draw only across contiguous non-zero runs: a step between hour i-1
+    // and i is drawn only when both have UV > 0, so the long overnight
+    // zero stretches draw nothing and the line never ramps to or from the
+    // floor. A lone non-zero hour (no non-zero neighbour) draws nothing,
+    // which is acceptable because UV is a smooth solar function that only
+    // crosses zero at dawn/dusk and stays above it for several hours.
     ctx.beginPath();
-    ctx.moveTo(uvPts[0].x, uvPts[0].y);
+    let inRun = false;
     for (let i = 1; i < uvPts.length; i++) {
-      ctx.lineTo(uvPts[i].x, uvPts[i - 1].y);
-      ctx.lineTo(uvPts[i].x, uvPts[i].y);
+      const prev = uvPts[i - 1];
+      const cur = uvPts[i];
+      if (prev.v > 0 && cur.v > 0) {
+        if (!inRun) {
+          ctx.moveTo(prev.x, prev.y);
+          inRun = true;
+        }
+        ctx.lineTo(cur.x, prev.y);
+        ctx.lineTo(cur.x, cur.y);
+      } else {
+        inRun = false;
+      }
     }
   };
   ctx.strokeStyle = bg;
