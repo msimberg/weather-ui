@@ -8,16 +8,18 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
-    let commit = git_describe().unwrap_or_else(|| {
-        std::env::var("GIT_SHA").unwrap_or_else(|_| "unknown".to_string())
-    });
+    let commit = git_describe()
+        .unwrap_or_else(|| std::env::var("GIT_SHA").unwrap_or_else(|_| "unknown".to_string()));
     println!("cargo:rustc-env=BUILD_COMMIT={commit}");
 
     let epoch = std::env::var("SOURCE_DATE_EPOCH")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or_else(|| {
-            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
         });
     println!("cargo:rustc-env=BUILD_DATE={}", ymd_hm(epoch));
 

@@ -9,7 +9,12 @@ import { BuildInfoChip } from "./BuildInfoChip";
 
 function healthResponse() {
   return new Response(
-    JSON.stringify({ ok: true, version: "9.9.9", commit: "testc0mmit", built: "2030-01-01 00:00Z" }),
+    JSON.stringify({
+      ok: true,
+      version: "9.9.9",
+      commit: "testc0mmit",
+      built: "2030-01-01 00:00Z",
+    }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
 }
@@ -18,7 +23,10 @@ describe("BuildInfoChip", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders v<version> (<commit>) with build time in the title", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(healthResponse())));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(healthResponse())),
+    );
     const root = document.createElement("div");
     const dispose = render(() => BuildInfoChip(), root);
 
@@ -49,7 +57,10 @@ describe("BuildInfoChip", () => {
   });
 
   it("swallows fetch failures and renders nothing", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("down"))));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("down"))),
+    );
     const root = document.createElement("div");
     const dispose = render(() => BuildInfoChip(), root);
     await new Promise((r) => setTimeout(r, 50));
