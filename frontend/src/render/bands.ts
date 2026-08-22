@@ -313,8 +313,11 @@ export function windBandY(band: BandRect, v: number, windMax: number, lineScale:
 }
 
 /** WMO station-model wind barb with a bg-colored halo so it reads against
- * the speed line. Shaft is 18px; feathers at the tail: pennant 50 kt,
- * long barb 10 kt, short barb 5 kt. */
+ * the speed line. Shaft is 18px; the shaft points toward the direction the
+ * wind comes from (rotated by bearing) and the feathers sit at that tip so
+ * the 'from' end is always marked. Speed is rounded to the nearest 5 kt per
+ * NWS: penment 50 kt, long barb 10 kt, short barb from 2.5 kt up, calm
+ * circle below 2.5 kt (so there is never a bare, directionless shaft). */
 function drawBarb(
   ctx: Ctx,
   x: number,
@@ -355,7 +358,12 @@ function drawBarb(
       ty += 4.5;
       kt -= 10;
     }
-    if (kt >= 5) {
+    // NWS rounds speed to the nearest 5 kt (3-7 -> one short barb), so the
+    // short barb is drawn from 2.5 kt up. Below that is the calm circle.
+    // Without this the 2.5-4.9 kt range drew a bare symmetric shaft with no
+    // barb at the tip, so the 'from' end was unmarked and the direction read
+    // as ambiguous.
+    if (kt >= 2.5) {
       ctx.beginPath();
       ctx.moveTo(0, ty);
       ctx.lineTo(-3.5, ty + 2.7);
