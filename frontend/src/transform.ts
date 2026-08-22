@@ -12,10 +12,11 @@ export interface Warp {
   strength: number;
 }
 
-export const DEFAULT_WARP: Warp = { fn: "power", strength: 0.7 };
+export const DEFAULT_WARP: Warp = { fn: "atan", strength: 0.08 };
 
-/** 0.44 puts "now" left of center at the default 4-day past / 7-day future. */
-export const DEFAULT_NOW_SHARE = 0.44;
+/** 0.15 puts "now" near the left edge: a thin compressed past and a wide,
+ * detailed 7-day future limb. */
+export const DEFAULT_NOW_SHARE = 0.15;
 
 interface Curve {
   f(u: number): number;

@@ -34,8 +34,7 @@ export interface ViewOptions {
   bandRatios: Record<string, number>;
 }
 
-export const BAND_ORDER: string[] = ["precip", "cloud", "wind", "temp"];
-
+export const BAND_ORDER: string[] = ["cloud", "temp", "precip", "wind"];
 export const BAND_TITLE: Record<string, string> = {
   precip: "PRECIP",
   cloud: "CLOUD",
@@ -78,7 +77,6 @@ export function renderTimeline(
 
   ctx.fillStyle = palette.bg;
   ctx.fillRect(0, 0, cssW, cssH);
-
   drawNights(ctx, model, X, L, palette);
   drawDividers(ctx, palette, model, X, L);
 

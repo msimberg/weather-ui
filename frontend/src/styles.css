@@ -369,6 +369,21 @@ button.icon-btn {
   flex-direction: column;
   gap: 10px;
 }
+.settings-panel .reset-btn {
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--sub);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-panel .reset-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
 
 .settings-panel label {
   display: flex;

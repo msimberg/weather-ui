@@ -47,7 +47,7 @@ const DEFAULT_SETTINGS: Settings = {
   provider: "openmeteo",
   theme: "auto",
   highContrast: false,
-  pastDays: 4,
+  pastDays: 14,
   futureDays: 7,
   warpFn: DEFAULT_WARP.fn,
   warpStrength: DEFAULT_WARP.strength,
@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   layout: "full",
   excludeModels: [],
   bandOrder: [...BAND_ORDER],
-  bandRatios: { precip: 0.25, cloud: 0.15, wind: 0.25, temp: 0.35 },
+  bandRatios: { cloud: 0.15, temp: 0.6, precip: 0.3, wind: 0.2 },
   compactHeightVh: 0.62,
   autoRefresh: false,
   refreshInterval: 10,
@@ -152,6 +152,12 @@ export function setSettings(patch: Partial<Settings>): void {
   setSettingsRaw((s) => ({ ...s, ...patch }));
 }
 
+/** Replace the whole settings object with the built-in defaults. Location
+ * (a separate signal) is left untouched so a reset never loses the city the
+ * user picked; a refetch follows automatically because the inputs change. */
+export function resetSettings(): void {
+  setSettingsRaw(() => ({ ...DEFAULT_SETTINGS }));
+}
 export function setLocation(loc: CurrentLocation): void {
   setLocationRaw(loc);
 }

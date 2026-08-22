@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { BAND_TITLE } from "../render";
-import { setSettings, settings } from "../state";
+import { resetSettings, setSettings, settings } from "../state";
 import type { WarpFn } from "../transform";
 import type { Units } from "../types";
 
@@ -336,6 +336,16 @@ export function SettingsPanel() {
               </div>
             </fieldset>
           </Show>
+          <button
+            type="button"
+            class="reset-btn"
+            onClick={() => {
+              if (confirm("Reset all settings to their defaults? This cannot be undone."))
+                resetSettings();
+            }}
+          >
+            Reset to defaults
+          </button>
         </div>
       </Show>
     </div>
