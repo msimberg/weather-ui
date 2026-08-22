@@ -9,7 +9,7 @@ import type { CurrentLocation, Units, WeatherPayload } from "./types";
 export interface Settings {
   units: Units;
   /** Forecast data provider; the backend translates both into one shape. */
-  provider: "openmeteo" | "pirateweather" | "meteoblue";
+  provider: "openmeteo" | "pirateweather" | "meteoblue" | "meteoswiss";
   theme: "auto" | "light" | "dark";
   /** True-black/true-white primaries and slightly bolder strokes. */
   highContrast: boolean;
@@ -120,7 +120,8 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
   if (
     out.provider !== "openmeteo" &&
     out.provider !== "pirateweather" &&
-    out.provider !== "meteoblue"
+    out.provider !== "meteoblue" &&
+    out.provider !== "meteoswiss"
   ) {
     out.provider = DEFAULT_SETTINGS.provider;
   }

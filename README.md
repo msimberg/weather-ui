@@ -32,6 +32,16 @@ Data comes from a selectable provider:
   views/year), so keep auto-refresh restrained with it.
 - **Pirate Weather**: Dark Sky compatible multi-model blend with richer
   US fields (minutely nowcast, alerts); needs `PIRATE_WEATHER_API_KEY`.
+- **MeteoSwiss** (Switzerland only): the official Swiss local point
+  forecast -- temperature, wind, gusts, precipitation, probability, and
+  the MeteoSwiss weather pictogram -- from Switzerland's open data
+  portal (`data.geo.admin.ch`, CC BY 4.0, keyless). Open-Meteo fills
+  UV, humidity, dew point, pressure, visibility, apparent temperature,
+  sun/moon, and the cloud layers. The point catalog is a one-time
+  download; each view then fetches several bulk per-parameter CSVs (one
+  ~25-33 MB file per band) filtered to the nearest Swiss point, cached
+  for an hour. Outside Switzerland it degrades to Open-Meteo with a
+  warning.
 
 The backend translates each provider into one Dark Sky-shaped document
 (meteoblue's is a meteoblue/Open-Meteo merge), so the frontend pipeline
@@ -93,8 +103,10 @@ Pirate-specific and hidden for provider=openmeteo.
 ## Architecture
 
 - `src/`: Rust (axum) server. Fetches from the selected provider
-  (`openmeteo.rs`, `meteoblue.rs`, and `pirate.rs` + `merge.rs` each
-  produce the shared Dark Sky shape; meteoblue overlays its fields onto
+  (`openmeteo.rs`, `meteoblue.rs`, `meteoswiss.rs`, and `pirate.rs` +
+  `merge.rs` each produce the shared Dark Sky shape; meteoblue and
+  MeteoSwiss overlay their fields onto an Open-Meteo document), caches
+  results, proxies Nominatim geocoding, serves the frontend.
   an Open-Meteo document), caches results, proxies Nominatim geocoding,
   serves the frontend.
 - `frontend/`: Solid + Vite + TypeScript. The timeline is one
@@ -146,8 +158,11 @@ All routes are unauthenticated and assume a trusted network (see
   Merged document: Dark Sky-shaped; `hourly.data` covers past days plus
   168 forecast hours, `daily.data` covers past days plus 7 forecast days.
   `meta.warnings` lists partially failed past-day loads. `provider` is
-  `openmeteo` (default), `meteoblue`, or `pirateweather`; selecting a
-  provider whose API key is not configured on the server returns 503.
+  `openmeteo` (default), `meteoblue`, `pirateweather`, or `meteoswiss`
+  (keyless, Switzerland only); selecting `pirateweather` or `meteoblue`
+  without its API key configured on the server returns 503.
+  `meteoswiss` never returns 503 -- outside coverage it degrades to
+  Open-Meteo with a `meta.warnings` entry.
 - `GET /api/geocode?q=&lang=` -> `[{name, lat, lon}]`
 - `GET /api/reverse?lat=&lon=&lang=` -> `{name, lat, lon}`
 - `GET /api/health`

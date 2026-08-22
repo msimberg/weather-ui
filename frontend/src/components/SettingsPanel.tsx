@@ -198,7 +198,7 @@ export function SettingsPanel() {
               value={settings().provider}
               onChange={(e) =>
                 setSettings({
-                  provider: e.currentTarget.value as "openmeteo" | "pirateweather" | "meteoblue",
+                  provider: e.currentTarget.value as "openmeteo" | "pirateweather" | "meteoblue" | "meteoswiss",
                 })
               }
             >

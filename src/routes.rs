@@ -18,6 +18,7 @@ use tower_http::trace::TraceLayer;
 use crate::cache::Cache;
 use crate::merge;
 use crate::meteoblue::{self, MeteoBlueClient};
+use crate::meteoswiss::{self, MeteoSwissClient};
 use crate::openmeteo::{self, OpenMeteoClient};
 use crate::pirate::{PirateClient, UpstreamError};
 
@@ -26,8 +27,7 @@ const FORECAST_TTL: Duration = Duration::from_secs(600);
 const GEOCODE_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 const SECS_PER_DAY: i64 = 86_400;
 const UNITS: [&str; 5] = ["si", "us", "ca", "uk", "uk2"];
-const PROVIDERS: [&str; 3] = ["openmeteo", "pirateweather", "meteoblue"];
-
+const PROVIDERS: [&str; 4] = ["openmeteo", "pirateweather", "meteoblue", "meteoswiss"];
 /// Model family names accepted by Pirate Weather's exclude parameter.
 const MODELS: [&str; 12] = [
     "hrrr",
@@ -49,6 +49,7 @@ pub struct AppState {
     client: PirateClient,
     om: OpenMeteoClient,
     mb: MeteoBlueClient,
+    ms: MeteoSwissClient,
     cache: Arc<Cache>,
 }
 
@@ -57,12 +58,14 @@ impl AppState {
         client: PirateClient,
         om: OpenMeteoClient,
         mb: MeteoBlueClient,
+        ms: MeteoSwissClient,
         cache: Arc<Cache>,
     ) -> AppState {
         AppState {
             client,
             om,
             mb,
+            ms,
             cache,
         }
     }
@@ -234,6 +237,44 @@ async fn weather(State(state): State<AppState>, Query(q): Query<WeatherQuery>) -
             }
         };
         let doc = meteoblue::merge(&mb_doc, &om_doc, &units);
+        merge::merge(&doc, &[], warnings)
+    } else if provider == "meteoswiss" {
+        // MeteoSwiss point forecast (keyless, CC-BY) + Open-Meteo fill,
+        // fetched concurrently. MeteoSwiss covers Switzerland only; outside
+        // coverage meteoswiss::merge degrades to the Open-Meteo document.
+        let ms_client = state.ms.clone();
+        let om_client = state.om.clone();
+        let om_units = units.clone();
+        let (ms_result, om_result) = tokio::join!(
+            ms_client.forecast(q.lat, lon),
+            om_client.forecast(q.lat, lon, past_days, &om_units),
+        );
+        let om_doc = match om_result {
+            Ok(v) => openmeteo::to_dark_sky(&v, &units),
+            Err(e) => {
+                tracing::error!(error = %e, "open-meteo request failed for meteoswiss provider");
+                return upstream_failure(&e).into_response();
+            }
+        };
+        let ms_doc = match ms_result {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "meteoswiss request failed; degrading to open-meteo");
+                json!({})
+            }
+        };
+        let doc = meteoswiss::merge(&ms_doc, &om_doc, &units);
+        // meteoswiss::merge may have added an out-of-coverage warning into
+        // doc.meta.warnings; merge::merge overwrites meta, so carry them over.
+        let warnings: Vec<String> = doc
+            .get("meta")
+            .and_then(|m| m.get("warnings"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
         merge::merge(&doc, &[], warnings)
     } else {
         if !state.client.has_key() {

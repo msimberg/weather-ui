@@ -2,6 +2,7 @@ mod cache;
 mod config;
 mod merge;
 mod meteoblue;
+mod meteoswiss;
 mod openmeteo;
 mod pirate;
 mod routes;
@@ -14,6 +15,7 @@ use tracing_subscriber::EnvFilter;
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::meteoblue::MeteoBlueClient;
+use crate::meteoswiss::MeteoSwissClient;
 use crate::openmeteo::OpenMeteoClient;
 use crate::pirate::PirateClient;
 use crate::routes::AppState;
@@ -50,7 +52,9 @@ async fn main() {
     if !mb.has_key() {
         tracing::warn!("METEOBLUE_API_KEY not set; provider=meteoblue requests will fail");
     }
-    let state = AppState::new(client, om, mb, Arc::new(Cache::new()));
+    // MeteoSwiss is keyless (Swiss FSDI open data, CC-BY 4.0).
+    let ms = MeteoSwissClient::new(PirateClient::user_agent(config.contact.as_deref()));
+    let state = AppState::new(client, om, mb, ms, Arc::new(Cache::new()));
     let app = routes::router(state, &config.static_dir);
 
     let addr = format!("{}:{}", config.host, config.port);
