@@ -312,12 +312,21 @@ export function windBandY(band: BandRect, v: number, windMax: number, lineScale:
   return band.y1 - BAND_PAD - clamp01(v / windMax) * dataDepth;
 }
 
-/** WMO station-model wind barb with a bg-colored halo so it reads against
- * the speed line. Shaft is 18px; the shaft points toward the direction the
- * wind comes from (rotated by bearing) and the feathers sit at that tip so
- * the 'from' end is always marked. Speed is rounded to the nearest 5 kt per
- * NWS: penment 50 kt, long barb 10 kt, short barb from 2.5 kt up, calm
- * circle below 2.5 kt (so there is never a bare, directionless shaft). */
+/** WMO station-model wind barb. The shaft (18px) points toward the
+ * direction the wind comes from (ctx.rotate(bearing)); the barbs and
+ * pennant sit at that source end and splay OUT past the tip to the right
+ * of the shaft -- toward low pressure in the Northern Hemisphere (Buys
+ * Ballot). This matches the convention MetPy / NWS surface charts draw: a
+ * north wind has low pressure to the east, so the feathers point east.
+ *
+ * Speed is rounded to the nearest 5 kt: pennant 50, full barb 10, half barb
+ * from 2.5 up, calm circle below 2.5. A lone half barb (no full, no
+ * pennant) is set back from the tip so it is not mistaken for a full barb
+ * at the tip -- with nothing to compare length against, the two would be
+ * indistinguishable (matplotlib: "easily distinguished from barbs with a
+ * single full line"). With a full or pennant present the half sits right
+ * below them in the normal stack, where its length is obvious by
+ * comparison. */
 function drawBarb(
   ctx: Ctx,
   x: number,
@@ -333,44 +342,61 @@ function drawBarb(
     ctx.lineWidth = lw;
     ctx.lineCap = "round";
     const shaftLen = 18;
+    const baseY = 6;
+    const tipY = baseY - shaftLen; // -12
+    // Barb geometry scaled from matplotlib (12-pt shaft * 1.5). The free end
+    // of each barb reaches toward the tip (-y) and out to +x, so the barbs
+    // read as feathers splaying past the source end, not hooks folding back
+    // onto the shaft toward the station.
+    const FULL = 7.2; // perpendicular reach of a full barb
+    const HALF = 3.6; // perpendicular reach of a half barb
+    const RISE = 2.25; // how far each barb reaches back toward the tip
+    const STEP = 2.25; // spacing between barbs down the shaft
     ctx.beginPath();
-    ctx.moveTo(0, 6);
-    ctx.lineTo(0, 6 - shaftLen);
+    ctx.moveTo(0, baseY);
+    ctx.lineTo(0, tipY);
     ctx.stroke();
     let kt = knots;
-    let ty = 6 - shaftLen;
+    let ty = tipY; // first mark (pennant or full) at the tip
+    let hasFlagOrFull = false;
+    // Pennants (50 kt each): a filled triangle, base on the shaft below the
+    // tip, apex out to +x.
     while (kt >= 47.5) {
       ctx.beginPath();
       ctx.moveTo(0, ty);
-      ctx.lineTo(-7, ty + 5);
-      ctx.lineTo(0, ty + 10);
+      ctx.lineTo(FULL, ty + RISE);
+      ctx.lineTo(0, ty + 2 * STEP);
       ctx.closePath();
       if (fill) ctx.fill();
       ctx.stroke();
-      ty += 3;
+      ty += 2 * STEP;
       kt -= 50;
+      hasFlagOrFull = true;
     }
+    // Full barbs (10 kt each).
     while (kt >= 10) {
       ctx.beginPath();
       ctx.moveTo(0, ty);
-      ctx.lineTo(-6.5, ty + 5);
+      ctx.lineTo(FULL, ty - RISE);
       ctx.stroke();
-      ty += 4.5;
+      ty += STEP;
       kt -= 10;
+      hasFlagOrFull = true;
     }
-    // NWS rounds speed to the nearest 5 kt (3-7 -> one short barb), so the
-    // short barb is drawn from 2.5 kt up. Below that is the calm circle.
-    // Without this the 2.5-4.9 kt range drew a bare symmetric shaft with no
-    // barb at the tip, so the 'from' end was unmarked and the direction read
-    // as ambiguous.
+    // Half barb (5 kt). When it is the only mark, offset it back from the
+    // tip so it is not read as a full barb sitting at the tip.
     if (kt >= 2.5) {
+      const hy = hasFlagOrFull ? ty : tipY + 1.5 * STEP;
       ctx.beginPath();
-      ctx.moveTo(0, ty);
-      ctx.lineTo(-3.5, ty + 2.7);
+      ctx.moveTo(0, hy);
+      ctx.lineTo(HALF, hy - RISE / 2);
       ctx.stroke();
     } else if (knots < 2.5) {
       ctx.beginPath();
-      ctx.arc(0, -2, 2.5, 0, Math.PI * 2);
+      // Calm marker: a hollow circle at the station (the shaft's anchor
+      // point), matching the MetPy / NWS convention -- no shaft, just the
+      // circle where the station is. Hollow by default (fill_empty=False).
+      ctx.arc(0, baseY, 2.5, 0, Math.PI * 2);
       ctx.stroke();
     }
   };
