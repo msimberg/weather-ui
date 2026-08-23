@@ -12,7 +12,7 @@ export interface Warp {
   strength: number;
 }
 
-export const DEFAULT_WARP: Warp = { fn: "atan", strength: 0.08 };
+export const DEFAULT_WARP: Warp = { fn: "log", strength: 0.3 };
 
 /** 0.15 puts "now" near the left edge: a thin compressed past and a wide,
  * detailed 7-day future limb. */

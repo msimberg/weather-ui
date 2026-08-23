@@ -249,7 +249,7 @@ export function SettingsPanel() {
                   <input
                     type="range"
                     min="0.05"
-                    max="0.6"
+                    max="1"
                     step="0.01"
                     value={settings().bandRatios[id as "precip" | "cloud" | "wind" | "temp"] ?? 1}
                     onInput={(e) =>

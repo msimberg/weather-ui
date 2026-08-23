@@ -52,11 +52,11 @@ const DEFAULT_SETTINGS: Settings = {
   warpFn: DEFAULT_WARP.fn,
   warpStrength: DEFAULT_WARP.strength,
   nowShare: DEFAULT_NOW_SHARE,
-  layout: "full",
+  layout: "compact",
   excludeModels: [],
   bandOrder: [...BAND_ORDER],
   bandRatios: { cloud: 0.15, temp: 0.6, precip: 0.3, wind: 0.2 },
-  compactHeightVh: 0.62,
+  compactHeightVh: 0.5,
   autoRefresh: false,
   refreshInterval: 10,
   aiModels: false,
@@ -113,7 +113,7 @@ function migrateSettings(stored: Partial<Settings> & { power?: number }): Settin
   }
   out.bandRatios = br as Settings["bandRatios"];
   if (typeof out.compactHeightVh !== "number" || !Number.isFinite(out.compactHeightVh)) {
-    out.compactHeightVh = 0.62;
+    out.compactHeightVh = 0.5;
   }
   out.compactHeightVh = Math.min(0.95, Math.max(0.3, out.compactHeightVh));
   if (typeof out.highContrast !== "boolean") out.highContrast = false;
